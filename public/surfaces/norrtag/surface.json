@@ -1,0 +1,14 @@
+{
+  "id": "norrtag",
+  "name": "Norrtåg",
+  "width": 2172,
+  "height": 724,
+  "background": "norrtag_bg.png",
+  "foreground": "norrtag_v2.png",
+  "paintMask": "paint-mask.png",
+  "paintMaskMode": "grayscale",
+  "paintMaskAlphaSource": "foreground",
+  "navigationBounds": "paint-mask",
+  "environmentParallax": 0.15,
+  "ambience": "/audio/ambience/railway.mp3"
+}

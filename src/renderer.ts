@@ -1,6 +1,6 @@
 import { RunoffEngine } from './runoff';
 import type { RunoffObstacle } from './runoff';
-import type { Dab, Material, Point, Stroke } from './settings';
+import type { Dab, Material, PaintOperation, Point, SprayStroke, Stroke } from './settings';
 
 type ChromeMaterial = Exclude<Material, 'paint'>;
 const chromeMaterials: ChromeMaterial[] = ['silver-chrome', 'copper-chrome', 'gold-chrome'];
@@ -69,19 +69,28 @@ void main(){
 const dabVertex = `#version 300 es
 precision highp float; precision highp int;
 in highp vec3 a_dab; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_brushSize; uniform highp int u_shape; out highp float v_angle; out highp float v_brushSizePx; out highp float v_pointSize; out highp vec2 v_world;
-void main(){ vec2 p=a_dab.xy*u_scale; vec2 clip=p/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_world=p; v_angle=a_dab.z; v_brushSizePx=u_brushSize*u_scale.y; float c=abs(cos(a_dab.z)); float s=abs(sin(a_dab.z)); float extent=(u_shape==2||u_shape==3)?1.8:u_shape==1?c+s:1.0; float pointSize=max(1.0,v_brushSizePx*extent+(u_shape==1?2.0*u_scale.y:0.0)); gl_PointSize=pointSize; v_pointSize=pointSize; }`;
+void main(){ vec2 p=a_dab.xy*u_scale; vec2 clip=p/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_world=a_dab.xy; v_angle=a_dab.z; v_brushSizePx=u_brushSize*u_scale.y; float c=abs(cos(a_dab.z)); float s=abs(sin(a_dab.z)); float extent=(u_shape==2||u_shape==3)?1.8:u_shape==1?c+s:1.0; float pointSize=max(1.0,v_brushSizePx*extent+(u_shape==1?2.0*u_scale.y:0.0)); gl_PointSize=pointSize; v_pointSize=pointSize; }`;
 const baseFragment = `#version 300 es
 precision highp float; precision highp int;
-uniform highp vec3 u_color; uniform highp int u_shape; uniform highp int u_maskOnly; in highp float v_angle; in highp float v_brushSizePx; in highp float v_pointSize; out highp vec4 outColor;
-void main(){ vec2 p=gl_PointCoord-vec2(0.5); float coverage=1.0; if(u_shape==0 && dot(p,p)>0.25) discard; if(u_shape!=0){ float c=cos(v_angle); float s=sin(v_angle); vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y); if(u_shape==1){ vec2 pixel=q*v_pointSize; float edge=v_brushSizePx*0.5-max(abs(pixel.x),abs(pixel.y)); coverage=clamp(edge+0.5,0.0,1.0); if(coverage<=0.0) discard; } else if(u_shape==2){ if((q.x*q.x)/(0.25)+(q.y*q.y)/(0.0378)>1.0) discard; } else { bool inShortSegment=q.x>=-0.5 && q.x<=-0.2; bool inLongSegment=q.x>=-0.1 && q.x<=0.5; if(abs(q.y)>0.1722222 || !(inShortSegment || inLongSegment)) discard; } } outColor=vec4(u_maskOnly==1?vec3(1.0):u_color,coverage); }`;
+uniform highp vec3 u_color; uniform highp int u_shape; uniform highp int u_maskOnly; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; in highp float v_angle; in highp float v_brushSizePx; in highp float v_pointSize; in highp vec2 v_world; out highp vec4 outColor;
+void main(){ vec2 p=gl_PointCoord-vec2(0.5); float coverage=1.0; if(u_shape==0 && dot(p,p)>0.25) discard; if(u_shape!=0){ float c=cos(v_angle); float s=sin(v_angle); vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y); if(u_shape==1){ vec2 pixel=q*v_pointSize; float edge=v_brushSizePx*0.5-max(abs(pixel.x),abs(pixel.y)); coverage=clamp(edge+0.5,0.0,1.0); if(coverage<=0.0) discard; } else if(u_shape==2){ if((q.x*q.x)/(0.25)+(q.y*q.y)/(0.0378)>1.0) discard; } else { bool inShortSegment=q.x>=-0.5 && q.x<=-0.2; bool inLongSegment=q.x>=-0.1 && q.x<=0.5; if(abs(q.y)>0.1722222 || !(inShortSegment || inLongSegment)) discard; } } vec2 maskUv=vec2(gl_FragCoord.x/(u_scale.x*u_logicalSize.x),gl_FragCoord.y/(u_scale.y*u_logicalSize.y)); float paintability=u_hasPaintMask==1?texture(u_paintMask,maskUv).r:1.0; coverage*=paintability; if(coverage<=0.001) discard; outColor=vec4(u_maskOnly==1?vec3(1.0):u_color,coverage); }`;
+const sprayVertex = `#version 300 es
+precision highp float;
+in highp vec4 a_particle; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; uniform highp float u_nozzleRotation;
+out highp float v_pressure; out highp vec2 v_uv; out highp vec2 v_world; out highp vec2 v_center;
+void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.5),vec2(0.5,0.5)); vec2 corner=corners[gl_VertexID]; float scale=min(u_scale.x,u_scale.y); vec2 local=vec2(corner.x,corner.y*u_nozzleAspect)*a_particle.z*scale; float c=cos(u_nozzleRotation); float s=sin(u_nozzleRotation); vec2 rotated=vec2(c*local.x-s*local.y,s*local.x+c*local.y); vec2 pixel=a_particle.xy*u_scale+rotated; vec2 clip=pixel/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_pressure=a_particle.w; v_uv=corner+vec2(0.5); v_world=pixel/u_scale; v_center=a_particle.xy; }`;
+const sprayFragment = `#version 300 es
+precision highp float;
+uniform highp vec3 u_color; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp float u_nozzleAspect; in highp float v_pressure; in highp vec2 v_uv; in highp vec2 v_world; in highp vec2 v_center; out highp vec4 outColor;
+void main(){ vec2 p=v_uv-vec2(0.5); vec2 shapePoint=vec2(p.x,p.y/u_nozzleAspect); float r=length(shapePoint)*2.0; float angle=atan(shapePoint.y,shapePoint.x); float phase=v_center.x*0.17+v_center.y*0.13; float boundary=1.0+sin(angle*5.0+phase)*0.025+sin(angle*9.0-phase*0.7)*0.012; if(r>boundary) discard; r/=boundary; float pressure=clamp(v_pressure,0.0,1.0); float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); float paintability=u_hasPaintMask==1?texture(u_paintMask,vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y)).r:1.0; outColor=vec4(u_color,density*falloff*paintability); }`;
 const runoffVertex = `#version 300 es
 precision highp float;
 in highp vec2 a_position; in highp vec3 a_color; uniform highp vec2 u_resolution; out highp vec3 v_color; out highp vec2 v_world;
 void main(){ vec2 p=a_position/u_resolution; gl_Position=vec4(p.x*2.0-1.0,1.0-p.y*2.0,0.0,1.0); v_color=a_color; v_world=p; }`;
 const runoffFragment = `#version 300 es
 precision highp float;
-in highp vec3 v_color; uniform highp int u_maskOnly; out highp vec4 outColor;
-void main(){ outColor=u_maskOnly==1?vec4(1.0):vec4(v_color,1.0); }`;
+in highp vec3 v_color; in highp vec2 v_world; uniform highp int u_maskOnly; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; out highp vec4 outColor;
+void main(){ float paintability=u_hasPaintMask==1?texture(u_paintMask,vec2(v_world.x,1.0-v_world.y)).r:1.0; if(paintability<=0.001) discard; outColor=u_maskOnly==1?vec4(1.0,1.0,1.0,paintability):vec4(v_color,paintability); }`;
 
 export class CanvasRenderer {
   private baseGl: WebGL2RenderingContext;
@@ -92,15 +101,23 @@ export class CanvasRenderer {
   private environmentTexture: WebGLTexture;
   private environmentReady = false;
   private runoffProgram: WebGLProgram;
+  private sprayProgram: WebGLProgram;
   private baseVao: WebGLVertexArrayObject;
   private runoffVao: WebGLVertexArrayObject;
+  private sprayVao: WebGLVertexArrayObject;
   private dabBuffer: WebGLBuffer;
+  private sprayBuffer: WebGLBuffer;
+  private sprayBufferCapacity = 0;
+  private readonly sprayGpuCache = new Map<SprayStroke, WebGLBuffer>();
   private readonly runoffGpuCache = new Map<object, { buffer: WebGLBuffer; geometry: Float32Array }>();
   private baseTexture: WebGLTexture;
+  private paintMaskTexture: WebGLTexture;
+  private paintMaskEnabled = false;
   private baseFramebuffer: WebGLFramebuffer;
   private chromeMasks!: Record<ChromeMaterial, { texture: WebGLTexture; framebuffer: WebGLFramebuffer }>;
-  private strokes: Stroke[] = [];
+  private strokes: PaintOperation[] = [];
   private active: Stroke | null = null;
+  private activeSpray: SprayStroke | null = null;
   private incrementallyRenderedStroke: Stroke | null = null;
   private incrementallyRenderedDabCount = 0;
   private width = 1;
@@ -137,14 +154,22 @@ export class CanvasRenderer {
     };
     environment.src = '/chrome-environment.png';
     this.runoffProgram = this.createProgram(baseGl, runoffVertex, runoffFragment, 'runoff');
+    this.sprayProgram = this.createProgram(baseGl, sprayVertex, sprayFragment, 'spray particles');
     const baseVao = baseGl.createVertexArray();
     const runoffVao = baseGl.createVertexArray();
+    const sprayVao = baseGl.createVertexArray();
     const dabBuffer = baseGl.createBuffer();
-    if (!baseVao || !runoffVao || !dabBuffer) throw new Error('Could not create canvas render resources.');
+    const sprayBuffer = baseGl.createBuffer();
+    if (!baseVao || !runoffVao || !sprayVao || !dabBuffer || !sprayBuffer) throw new Error('Could not create canvas render resources.');
     this.baseVao = baseVao;
     this.runoffVao = runoffVao;
+    this.sprayVao = sprayVao;
     this.dabBuffer = dabBuffer;
+    this.sprayBuffer = sprayBuffer;
     this.baseTexture = this.createTexture(baseGl);
+    this.paintMaskTexture = this.createTexture(baseGl);
+    baseGl.bindTexture(baseGl.TEXTURE_2D, this.paintMaskTexture);
+    baseGl.texImage2D(baseGl.TEXTURE_2D, 0, baseGl.RGBA8, 1, 1, 0, baseGl.RGBA, baseGl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
     this.baseFramebuffer = this.createFramebuffer(baseGl, this.baseTexture);
     this.chromeMasks = Object.fromEntries(chromeMaterials.map((material) => {
       const texture = this.createTexture(baseGl);
@@ -248,8 +273,25 @@ export class CanvasRenderer {
     this.startRunoffAnimation();
   }
 
+  setPaintMask(source: TexImageSource | null): void {
+    const gl = this.baseGl;
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, this.paintMaskTexture);
+    if (source) {
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      this.paintMaskEnabled = true;
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+      this.paintMaskEnabled = false;
+    }
+    this.scheduleRender(true);
+  }
+
   setActive(stroke: Stroke | null, newDabs: Dab[] = []): void {
     this.active = stroke;
+    if (stroke) this.activeSpray = null;
     if (this.incrementallyRenderedStroke !== stroke) {
       this.incrementallyRenderedStroke = stroke?.material === 'paint' ? stroke : null;
       this.incrementallyRenderedDabCount = 0;
@@ -270,17 +312,50 @@ export class CanvasRenderer {
     }
   }
 
+  setActiveSpray(stroke: SprayStroke | null, newParticles: Float32Array = new Float32Array(0)): void {
+    this.activeSpray = stroke;
+    if (!stroke) return;
+    if (stroke.material !== 'paint') {
+      this.scheduleRender(true);
+      return;
+    }
+    if (!newParticles.length) {
+      this.scheduleRender(true);
+      return;
+    }
+    if (this.renderReplayRequired) return;
+    this.drawSprayParticles(newParticles, stroke);
+    this.scheduleRender(false);
+  }
+
   commitStroke(stroke: Stroke): void {
-    if (this.strokes.at(-1) !== stroke) this.strokes.push(stroke);
+    this.commitOperation({ kind: 'marker', stroke });
+  }
+
+  commitOperation(operation: PaintOperation): void {
+    const last = this.strokes.at(-1);
+    if (last?.kind !== operation.kind || last.stroke !== operation.stroke) this.strokes.push(operation);
     this.active = null;
+    this.activeSpray = null;
     this.incrementallyRenderedStroke = null;
     this.incrementallyRenderedDabCount = 0;
   }
 
   setStrokes(strokes: Stroke[]): void {
-    this.strokes = [...strokes];
-    const retained = this.active ? [...this.strokes, this.active] : this.strokes;
+    this.setOperations(strokes.map((stroke) => ({ kind: 'marker', stroke })));
+  }
+
+  setOperations(operations: PaintOperation[]): void {
+    this.strokes = [...operations];
+    const activeMarker = this.active ? [{ kind: 'marker' as const, stroke: this.active }] : [];
+    const retained = [...this.strokes.filter((operation): operation is Extract<PaintOperation, { kind: 'marker' }> => operation.kind === 'marker').map((operation) => operation.stroke), ...activeMarker.map((operation) => operation.stroke)];
     const keep = this.runoffEngine.retain(retained);
+    const retainedSpray = new Set(this.strokes.filter((operation): operation is Extract<PaintOperation, { kind: 'spray' }> => operation.kind === 'spray').map((operation) => operation.stroke));
+    if (this.activeSpray) retainedSpray.add(this.activeSpray);
+    for (const [stroke, buffer] of this.sprayGpuCache) if (!retainedSpray.has(stroke)) {
+      this.baseGl.deleteBuffer(buffer);
+      this.sprayGpuCache.delete(stroke);
+    }
     for (const [component, cached] of this.runoffGpuCache) if (!keep.has(component)) {
       this.baseGl.deleteBuffer(cached.buffer);
       this.runoffGpuCache.delete(component);
@@ -290,12 +365,14 @@ export class CanvasRenderer {
   }
 
   clear(): void {
-    this.strokes = []; this.active = null; this.runoffEngine.clear();
+    this.strokes = []; this.active = null; this.activeSpray = null; this.runoffEngine.clear();
     this.incrementallyRenderedStroke = null;
     this.incrementallyRenderedDabCount = 0;
     this.renderReplayRequired = false;
     for (const cached of this.runoffGpuCache.values()) this.baseGl.deleteBuffer(cached.buffer);
     this.runoffGpuCache.clear();
+    for (const buffer of this.sprayGpuCache.values()) this.baseGl.deleteBuffer(buffer);
+    this.sprayGpuCache.clear();
     if (this.raf) cancelAnimationFrame(this.raf);
     if (this.renderRaf) cancelAnimationFrame(this.renderRaf);
     this.raf = 0; this.renderRaf = 0; this.lastFrame = 0;
@@ -312,7 +389,21 @@ export class CanvasRenderer {
   private replayBase(): void {
     this.clearBase();
     let chromeBatch = false;
-    const drawStroke = (stroke: Stroke): void => {
+    const flushChrome = (): void => {
+      if (!chromeBatch) return;
+      this.compositeChrome();
+      chromeBatch = false;
+    };
+    const drawStroke = (operation: PaintOperation): void => {
+      if (operation.kind === 'spray') {
+        flushChrome();
+        if (operation.stroke.material !== 'paint') this.clearChromeMasks();
+        if (operation.stroke === this.activeSpray) this.drawSprayParticles(operation.stroke.particles, operation.stroke);
+        else this.drawCachedSprayStroke(operation.stroke);
+        if (operation.stroke.material !== 'paint') this.compositeChrome();
+        return;
+      }
+      const stroke = operation.stroke;
       if (stroke.material !== 'paint') {
         if (!chromeBatch) {
           chromeBatch = true;
@@ -322,13 +413,14 @@ export class CanvasRenderer {
         this.drawRunoffs(stroke, true);
         return;
       }
-      if (chromeBatch) { this.compositeChrome(); chromeBatch = false; }
+      flushChrome();
       this.drawBaseDabs(stroke.dabs, stroke);
       this.drawRunoffs(stroke);
     };
     for (const stroke of this.strokes) drawStroke(stroke);
-    if (this.active) drawStroke(this.active);
-    if (chromeBatch) this.compositeChrome();
+    if (this.active) drawStroke({ kind: 'marker', stroke: this.active });
+    if (this.activeSpray) drawStroke({ kind: 'spray', stroke: this.activeSpray });
+    flushChrome();
     this.presentBase();
     this.incrementallyRenderedStroke = this.active?.material === 'paint' ? this.active : null;
     this.incrementallyRenderedDabCount = this.incrementallyRenderedStroke?.dabs.length ?? 0;
@@ -369,6 +461,16 @@ export class CanvasRenderer {
     gl.disable(gl.BLEND);
   }
 
+  private bindPaintMask(program: WebGLProgram): void {
+    const gl = this.baseGl;
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, this.paintMaskTexture);
+    gl.uniform1i(gl.getUniformLocation(program, 'u_paintMask'), 4);
+    gl.uniform1i(gl.getUniformLocation(program, 'u_hasPaintMask'), this.paintMaskEnabled ? 1 : 0);
+    const logicalSize = gl.getUniformLocation(program, 'u_logicalSize');
+    if (logicalSize) gl.uniform2f(logicalSize, this.width, this.height);
+  }
+
   private scheduleRender(replay: boolean): void {
     this.renderReplayRequired ||= replay;
     if (this.renderRaf) return;
@@ -400,12 +502,63 @@ export class CanvasRenderer {
     gl.uniform1i(gl.getUniformLocation(this.baseProgram, 'u_shape'), stroke.shape === 'round' ? 0 : stroke.shape === 'square' ? 1 : stroke.shape === 'chisel' ? 2 : 3);
     gl.uniform1i(gl.getUniformLocation(this.baseProgram, 'u_maskOnly'), maskOnly ? 1 : 0);
     gl.uniform3fv(gl.getUniformLocation(this.baseProgram, 'u_color'), this.parseColor(first.color));
+    this.bindPaintMask(this.baseProgram);
     const attribute = gl.getAttribLocation(this.baseProgram, 'a_dab');
     gl.enableVertexAttribArray(attribute);
     gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 12, 0);
     gl.enable(gl.BLEND);
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArrays(gl.POINTS, 0, dabs.length);
+    gl.disable(gl.BLEND);
+  }
+
+  private drawSprayParticles(particles: Float32Array, stroke: SprayStroke): void {
+    if (!particles.length) return;
+    const gl = this.baseGl;
+    gl.bindVertexArray(this.sprayVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sprayBuffer);
+    if (particles.byteLength > this.sprayBufferCapacity) {
+      this.sprayBufferCapacity = Math.max(particles.byteLength, this.sprayBufferCapacity === 0 ? 4096 : this.sprayBufferCapacity * 2);
+      gl.bufferData(gl.ARRAY_BUFFER, this.sprayBufferCapacity, gl.DYNAMIC_DRAW);
+    }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, particles);
+    this.drawSprayBuffer(this.sprayBuffer, particles.length / 4, stroke);
+  }
+
+  private drawCachedSprayStroke(stroke: SprayStroke): void {
+    if (!stroke.particles.length) return;
+    const gl = this.baseGl;
+    let buffer = this.sprayGpuCache.get(stroke);
+    if (!buffer) {
+      buffer = gl.createBuffer() ?? undefined;
+      if (!buffer) throw new Error('Could not allocate spray particle buffer.');
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, stroke.particles, gl.STATIC_DRAW);
+      this.sprayGpuCache.set(stroke, buffer);
+    }
+    this.drawSprayBuffer(buffer, stroke.particles.length / 4, stroke);
+  }
+
+  private drawSprayBuffer(buffer: WebGLBuffer, particleCount: number, stroke: SprayStroke): void {
+    const gl = this.baseGl;
+    gl.bindVertexArray(this.sprayVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, stroke.material === 'paint' ? this.baseFramebuffer : this.chromeMasks[stroke.material].framebuffer);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.useProgram(this.sprayProgram);
+    gl.uniform2f(gl.getUniformLocation(this.sprayProgram, 'u_targetSize'), this.canvas.width, this.canvas.height);
+    gl.uniform2f(gl.getUniformLocation(this.sprayProgram, 'u_scale'), this.canvas.width / this.width, this.canvas.height / this.height);
+    gl.uniform3fv(gl.getUniformLocation(this.sprayProgram, 'u_color'), this.parseColor(stroke.color));
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleAspect'), stroke.nozzle === 'calligraphy' ? 0.18 : 1.0);
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleRotation'), stroke.nozzle === 'calligraphy' ? stroke.rotation * Math.PI / 180 : 0);
+    this.bindPaintMask(this.sprayProgram);
+    const attribute = gl.getAttribLocation(this.sprayProgram, 'a_particle');
+    gl.enableVertexAttribArray(attribute);
+    gl.vertexAttribPointer(attribute, 4, gl.FLOAT, false, 16, 0);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.vertexAttribDivisor(attribute, 1);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, particleCount);
     gl.disable(gl.BLEND);
   }
 
@@ -422,6 +575,7 @@ export class CanvasRenderer {
         gl.useProgram(this.runoffProgram);
         gl.uniform2f(gl.getUniformLocation(this.runoffProgram, 'u_resolution'), this.width, this.height);
         gl.uniform1i(gl.getUniformLocation(this.runoffProgram, 'u_maskOnly'), maskOnly ? 1 : 0);
+        this.bindPaintMask(this.runoffProgram);
         gl.bindVertexArray(this.runoffVao);
         position = gl.getAttribLocation(this.runoffProgram, 'a_position');
         color = gl.getAttribLocation(this.runoffProgram, 'a_color');

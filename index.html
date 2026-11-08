@@ -2,15 +2,15 @@
 <html lang="sv">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#090a0b" />
-    <title>Tagbox — Fullscreen</title>
+    <title>Tagbox</title>
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <a class="brand" href="#" aria-label="Tagbox home"><span>TAGBOX <span id="brand-version"></span></span></a>
-        <div class="top-actions"><button id="export-button" class="mode-button" type="button">Export PNG</button><button id="canvas-mode-button" class="mode-button" type="button">Fullscreen</button><button id="help-button" class="icon-button help-button" type="button" title="Help" aria-label="Open help">?</button><button id="clear-button" class="icon-button clear-button" type="button" title="Clear canvas" aria-label="Clear canvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div>
+        <div class="top-actions"><button id="export-button" class="mode-button" type="button">Export PNG</button><button id="canvas-mode-button" class="mode-button" type="button">Fullscreen</button><button id="help-button" class="icon-button help-button" type="button" title="Help" aria-label="Open help">?</button><button id="undo-button" class="icon-button undo-top-button" type="button" title="Undo stroke" aria-label="Undo stroke" disabled>↶</button><button id="clear-button" class="icon-button clear-button" type="button" title="Clear canvas" aria-label="Clear canvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button id="sound-toggle" class="icon-button sound-toggle" type="button" title="Mute sound" aria-label="Mute sound" aria-pressed="true"><svg class="sound-on-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4zM16 9a5 5 0 0 1 0 6M18 6a9 9 0 0 1 0 12"/></svg><svg class="sound-muted-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4zM16 9l5 6m0-6-5 6"/></svg></button></div>
       </header>
       <main class="workspace">
         <section class="canvas-stage" aria-label="Canvas">
@@ -19,9 +19,22 @@
           <canvas id="runoff-canvas" class="runoff-layer" aria-hidden="true"></canvas>
           <canvas id="foreground-canvas" class="surface-layer foreground-layer" aria-hidden="true"></canvas>
           <div id="brush-cursor-preview" class="brush-cursor-preview" aria-hidden="true"><span class="brush-cursor-tip"></span></div>
-          <button id="canvas-exit-button" class="canvas-exit-button" type="button" aria-label="Exit fullscreen">Exit fullscreen</button>
+          <section id="navigator" class="navigator" aria-label="Canvas navigator">
+            <button id="navigator-toggle" class="navigator-toggle" type="button" aria-expanded="true" aria-controls="navigator-map" aria-label="Hide navigator" title="Hide navigator">−</button>
+            <div id="navigator-map" class="navigator-map">
+              <canvas id="navigator-canvas" aria-hidden="true"></canvas>
+              <div id="navigator-viewport" class="navigator-viewport" aria-hidden="true"></div>
+            </div>
+          </section>
         </section>
         <aside class="toolbar" aria-label="Penselinställningar">
+          <button id="toolbar-toggle" class="toolbar-toggle" type="button" aria-expanded="true" aria-controls="tool-selector marker-panel spray-panel" aria-label="Collapse settings panel" title="Collapse settings panel"><span class="toolbar-toggle-icon" aria-hidden="true">›</span><span class="toolbar-toggle-label">Settings</span></button>
+          <div id="fullscreen-actions" class="fullscreen-actions" aria-label="Fullscreen actions"></div>
+          <nav id="tool-selector" class="tool-selector" aria-label="Painting tool">
+            <button class="tool-tab active" type="button" data-tool="marker" aria-pressed="true">Marker</button>
+            <button class="tool-tab" type="button" data-tool="spray" aria-pressed="false">Spray</button>
+          </nav>
+          <section id="marker-panel" class="tool-panel" aria-label="Marker settings">
           <div class="tool-group brush-shape-group">
             <div class="control-label"><span class="shape-label">Brush tip</span></div>
             <div class="brush-shape-picker" role="group" aria-label="Välj penselspets">
@@ -40,8 +53,8 @@
           </div>
           <div class="tool-group">
             <div class="control-label"><label for="brush-size">Brush size</label><output id="size-value" for="brush-size">10 px</output></div>
-            <input id="brush-size" class="range-input" type="range" min="2" max="50" value="10" />
-            <div class="range-ends"><span>2</span><span>50</span></div>
+            <input id="brush-size" class="range-input" type="range" min="2" max="30" value="10" />
+            <div class="range-ends"><span>2</span><span>30</span></div>
           </div>
           <div class="tool-group smoothing-group">
             <div class="control-label"><label for="smoothing">Stroke smoothing</label><output id="smoothing-value" for="smoothing">50%</output></div>
@@ -61,6 +74,36 @@
           <div class="tool-group splatter-group">
             <label class="splatter-toggle" for="paint-splatter"><input id="paint-splatter" type="checkbox" checked /><span>Paint Splatter</span></label>
           </div>
+          </section>
+          <section id="spray-panel" class="tool-panel spray-panel" aria-label="Spray Paint settings" hidden>
+            <div class="tool-group">
+              <div class="control-label"><span class="shape-label">Spray nozzle</span></div>
+              <div class="spray-nozzle-picker" role="group" aria-label="Spray nozzle">
+                <button class="spray-nozzle-option active" type="button" data-nozzle="standard" aria-pressed="true">Standard</button>
+                <button class="spray-nozzle-option" type="button" data-nozzle="calligraphy" aria-pressed="false">Calligraphy</button>
+              </div>
+            </div>
+            <div id="spray-rotation-group" class="tool-group" hidden>
+              <div class="control-label"><label for="spray-rotation">Nozzle rotation</label><output id="spray-rotation-value">0°</output></div>
+              <input id="spray-rotation" class="range-input" type="range" min="0" max="360" value="0" />
+              <div class="range-ends"><span>0°</span><span>360°</span></div>
+            </div>
+            <div class="tool-group">
+              <div class="control-label"><label for="spray-size">Spray Size</label><output id="spray-size-value">96 px</output></div>
+              <input id="spray-size" class="range-input" type="range" min="3" max="240" value="96" />
+              <div class="range-ends"><span>3</span><span>240</span></div>
+            </div>
+            <div class="tool-group">
+              <div class="control-label"><label for="spray-smoothing">Smoothing</label><output id="spray-smoothing-value">45%</output></div>
+              <input id="spray-smoothing" class="range-input" type="range" min="0" max="100" value="45" />
+              <div class="range-ends"><span>Raw</span><span>Steady</span></div>
+            </div>
+            <div class="tool-group">
+              <div class="control-label"><label for="spray-pressure">Pressure</label><output id="spray-pressure-value">55%</output></div>
+              <input id="spray-pressure" class="range-input" type="range" min="0" max="100" value="55" />
+              <div class="range-ends"><span>Light</span><span>Dense</span></div>
+            </div>
+          </section>
           <div class="tool-group color-group">
             <div class="control-label"><label for="brush-color">Brush color</label><span class="color-hex" id="color-value">#FFFFFF</span></div>
             <div class="color-control"><span class="color-swatch" id="color-swatch"></span><input id="brush-color" type="color" value="#ffffff" aria-label="Choose brush color" /><span class="color-name">Custom color</span><span class="chevron">↗</span></div>
@@ -68,6 +111,12 @@
             <div id="material-palette" class="material-palette" aria-label="Chrome materials"></div>
             <div class="saved-palette-row"><span class="palette-label">Saved</span><div id="saved-palette" class="swatches saved-palette" aria-label="Saved brush colors"></div><button id="save-color-button" class="save-color-button" type="button" title="Save current brush color">+</button></div>
           </div>
+          <section class="tool-group sound-settings" aria-label="Sound settings">
+            <div class="control-label"><span class="shape-label">Sound</span><button id="sound-panel-toggle" class="sound-panel-toggle" type="button" aria-pressed="true">On</button></div>
+            <div class="sound-range"><label for="sound-master-volume">Master</label><input id="sound-master-volume" class="range-input" type="range" min="0" max="100" value="65" /><output id="sound-master-value">65%</output></div>
+            <div class="sound-range"><label for="sound-ambience-volume">Ambience</label><input id="sound-ambience-volume" class="range-input" type="range" min="0" max="100" value="22" /><output id="sound-ambience-value">22%</output></div>
+            <div class="sound-range"><label for="sound-effects-volume">Effects</label><input id="sound-effects-volume" class="range-input" type="range" min="0" max="100" value="70" /><output id="sound-effects-value">70%</output></div>
+          </section>
           <section class="tool-group background-group" aria-labelledby="background-heading">
             <div class="control-label"><span id="background-heading" class="shape-label">Background</span></div>
             <div id="surface-picker" class="surface-picker" role="group" aria-label="Choose canvas background">
@@ -78,7 +127,6 @@
             <div class="color-control solid-color-control"><span class="background-color-swatch"></span><input id="canvas-background" type="color" value="#000000" aria-label="Choose solid background color" /><span class="color-name">Solid color</span><span class="chevron">↗</span></div>
           </section>
           <div class="tool-spacer"></div>
-          <div class="bottom-tools"><button id="undo-button" class="undo-button" type="button" disabled><span class="undo-icon">↶</span><span>Undo stroke</span><kbd>⌘ Z</kbd></button></div>
         </aside>
       </main>
       <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
@@ -86,25 +134,27 @@
         <section class="help-section">
           <h2>Drawing</h2>
           <ul>
-            <li>Drag on the canvas to paint.</li>
-            <li>Change brush tip, size and rotation.</li>
-            <li>Adjust stroke smoothing and paint load.</li>
-            <li>Choose a paint color or Chrome material.</li>
+            <li>Choose Marker or Spray, then drag on the canvas to draw.</li>
+            <li>Marker tips: Round, Square, Chisel and Split Chisel. Adjust size, smoothing, Paint Load, Run Intensity and Paint Splatter.</li>
+            <li>Spray nozzles: Standard and Calligraphy. Adjust size, smoothing and pressure; Calligraphy also has nozzle rotation.</li>
+            <li>Choose a paint color or Silver, Copper or Gold Chrome. The surface picker offers Solid, Concrete, Steel Gate and Norrtåg.</li>
           </ul>
         </section>
         <section class="help-section">
-          <h2>Gestures</h2>
-          <div class="help-gesture"><span>One finger / mouse</span><span>Draw on canvas</span></div>
-          <div class="help-gesture"><span>Two fingers</span><span>Undo last stroke</span></div>
-          <div class="help-gesture help-destructive"><span>Three fingers</span><span>Clear entire canvas</span></div>
-          <p class="help-note">Two- and three-finger gestures require a stationary press and release. Movement cancels the gesture.</p>
+          <h2>Mouse and keyboard</h2>
+          <ul>
+            <li>Mouse wheel over the canvas zooms. Middle-button drag pans; hold Space and left-drag to pan.</li>
+            <li>Undo Stroke or Ctrl+Z (⌘Z on Mac) undoes the last stroke. Clear Canvas or Delete clears the canvas on desktop.</li>
+            <li>Escape exits Fullscreen. Focus the Marker rotation dial and use arrow keys to rotate 1° (Shift+arrow: 5°); Home and End select 0° and 360°.</li>
+            <li>Drag the Navigator map or its viewport rectangle to move around the canvas. Use its toggle to hide or show it.</li>
+          </ul>
         </section>
         <section class="help-section">
-          <h2>Other controls</h2>
+          <h2>Touch and sound</h2>
           <ul>
-            <li>Use Undo or Ctrl+Z (⌘Z on Mac) to undo.</li>
-            <li>Use Fullscreen to hide the toolbar.</li>
-            <li>Use the trash button to clear the entire canvas.</li>
+            <li>One-finger touch draws. Two-finger movement on the canvas pinches to zoom and moves the view.</li>
+            <li>Drag the Navigator map or viewport with touch to pan.</li>
+            <li>Sound controls mute all audio or adjust Master, Ambience and Effects separately. Preferences are saved in this browser.</li>
           </ul>
         </section>
         <a class="help-source-link" href="https://github.com/plutonium87/tagbox" target="_blank" rel="noopener noreferrer">Source code on GitHub</a>

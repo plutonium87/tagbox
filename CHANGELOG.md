@@ -2,6 +2,34 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [0.9.9] - 2026-11-08 (release candidate)
+
+### Added
+
+- Added the Spray tool with Standard and Calligraphy nozzles, independent spray controls, and Marker/Chrome material support.
+- Added surface-selected looping ambience, spray start/loop/end effects, can-shake detection, and cap-change and color-selection sounds.
+- Added master mute and independent Master, Ambience and Effects volume controls with saved audio preferences.
+- Added custom surface registration, surface-native logical dimensions, native-dimension PNG export, and Navigator viewport tracking across zoom and pan.
+- Added the Norrtåg surface at 2172×724 with an environment background, transparent train foreground, grayscale paint mask, and foreground alpha masking.
+- Added mouse and touch navigation plus responsive canvas-only Fullscreen controls.
+
+### Changed
+
+- Set the Marker size range to 2–30 px and the Spray size range to 3–240 px.
+- Kept built-in surfaces at 1920×1080 while allowing custom surfaces to use their configured dimensions.
+- Revised the in-app Help guide to document implemented controls, shortcuts and touch gestures.
+
+### Fixed
+
+- Kept drawing and navigation coordinates aligned with each surface's logical dimensions and source layers.
+- Preserved paint restrictions through grayscale mask intensity and transparent foreground pixels.
+- Improved pointer-cancellation handling so canceled strokes do not become committed artwork.
+
+### Technical
+
+- Added native surface sizing to rendering targets, paint-mask sampling, viewport fitting, Navigator calculations and PNG exports.
+- Added surface ambience crossfading and cached one-shot effects while retaining separate audio-volume categories.
+
 ## [0.8.1] - 2026-11-07
 
 ### Added
