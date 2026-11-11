@@ -35,7 +35,7 @@ function loadOptionalImage(url: string | undefined): Promise<HTMLImageElement | 
 }
 
 async function loadCustomSurface(id: string): Promise<void> {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || id === 'solid' || id === 'concrete' || id === 'steel-gate') return;
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || id === 'solid' || id === 'steel-gate') return;
   try {
     const configUrl = `/surfaces/${id}/surface.json`;
     const response = await fetch(configUrl, { cache: 'no-cache' });
@@ -155,7 +155,6 @@ export function getSurfaceNavigationBounds(surface: CanvasSurface): LogicalBound
 }
 
 export function getSurfaceAmbience(surface: CanvasSurface): string | null {
-  if (surface === 'concrete') return null;
   if (surface === 'steel-gate') return 'urban';
   return customSurfaces.get(surface)?.ambience ?? null;
 }
@@ -165,15 +164,15 @@ export function getSurfaceEnvironmentParallax(surface: CanvasSurface): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : (surface === 'norrtag' ? 0.15 : 1);
 }
 
-const concretePhoto = new Image();
+const gateBackdropPhoto = new Image();
 const gatePhoto = new Image();
 const gateDetailsPhoto = new Image();
 let gatePlate: HTMLCanvasElement | null = null;
 let gateForegroundPlate: HTMLCanvasElement | null = null;
-let concreteReady = false;
+let gateBackdropReady = false;
 let gateReady = false;
 let gateDetailsReady = false;
-concretePhoto.onload = () => { concreteReady = true; window.dispatchEvent(new Event('tagbox-surface-assets-ready')); };
+gateBackdropPhoto.onload = () => { gateBackdropReady = true; window.dispatchEvent(new Event('tagbox-surface-assets-ready')); };
 gatePhoto.onload = () => {
   gateReady = true;
   gatePlate = buildGatePlate();
@@ -185,11 +184,10 @@ gateDetailsPhoto.onload = () => {
   if (gateReady) gateForegroundPlate = buildGateForegroundPlate();
   window.dispatchEvent(new Event('tagbox-surface-assets-ready'));
 };
-concretePhoto.src = '/concrete-photo-background.png';
+gateBackdropPhoto.src = '/concrete-photo-background.png';
 gatePhoto.src = '/steel-gate-photo-background.png';
 gateDetailsPhoto.src = '/steel-gate-photo-details.png';
 
-const concreteJoint = { top: 585, bottom: 594 };
 const gatePhysicalRects = [
   { left: 108, top: 12, right: 1561, bottom: 45 },       // top rail
   { left: 108, top: 893, right: 1561, bottom: 925 },     // lower rail / threshold
@@ -217,13 +215,13 @@ function drawCover(ctx: CanvasRenderingContext2D, image: HTMLImageElement): void
 }
 
 function drawGatePhoto(ctx: CanvasRenderingContext2D): void {
-  if (!gateReady || !gatePlate) { drawConcretePhoto(ctx); return; }
-  drawConcretePhoto(ctx);
+  if (!gateReady || !gatePlate) { drawGateBackdrop(ctx); return; }
+  drawGateBackdrop(ctx);
   ctx.drawImage(gatePlate, 0, 0);
 }
 
-function drawConcretePhoto(ctx: CanvasRenderingContext2D): void {
-  if (concreteReady) drawCover(ctx, concretePhoto);
+function drawGateBackdrop(ctx: CanvasRenderingContext2D): void {
+  if (gateBackdropReady) drawCover(ctx, gateBackdropPhoto);
   else { ctx.fillStyle = '#343638'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); }
 }
 
@@ -232,7 +230,7 @@ function buildGatePlate(): HTMLCanvasElement {
   const ctx = plate.getContext('2d')!;
   const transform = gateTransform(gatePhoto);
   ctx.drawImage(gatePhoto, transform.x, 0, gatePhoto.naturalWidth * transform.scale, CANVAS_HEIGHT);
-  // Fade only the source image's outer concrete margins into the matching concrete photo.
+  // Fade the gate image's outer margins into its shared photographic backdrop.
   ctx.globalCompositeOperation = 'destination-in';
   const mask = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, 0);
   const fade = 34;
@@ -285,8 +283,6 @@ export function drawSurface(ctx: CanvasRenderingContext2D, surface: CanvasSurfac
   if (surface === 'solid') {
     ctx.fillStyle = solidColor;
     ctx.fillRect(0, 0, width, height);
-  } else if (surface === 'concrete') {
-    drawConcretePhoto(ctx);
   } else if (surface === 'steel-gate') {
     drawGatePhoto(ctx);
   } else {
@@ -300,21 +296,10 @@ export function drawSurface(ctx: CanvasRenderingContext2D, surface: CanvasSurfac
   }
 }
 
-function drawPhotoPatch(ctx: CanvasRenderingContext2D, image: HTMLImageElement, rect: { left: number; top: number; right: number; bottom: number }, transform: { scale: number; x: number; y: number }): void {
-  const sourceWidth = rect.right - rect.left;
-  const sourceHeight = rect.bottom - rect.top;
-  ctx.drawImage(image, rect.left, rect.top, sourceWidth, sourceHeight,
-    transform.x + rect.left * transform.scale, transform.y + rect.top * transform.scale,
-    sourceWidth * transform.scale, sourceHeight * transform.scale);
-}
-
 export function drawForeground(ctx: CanvasRenderingContext2D, surface: CanvasSurface): void {
   const { width, height } = getSurfaceDimensions(surface);
   ctx.clearRect(0, 0, width, height);
-  if (surface === 'concrete' && concreteReady) {
-    const transform = coverTransform(concretePhoto);
-    drawPhotoPatch(ctx, concretePhoto, { left: 0, top: concreteJoint.top, right: concretePhoto.naturalWidth, bottom: concreteJoint.bottom }, transform);
-  } else if (surface === 'steel-gate' && gateForegroundPlate) {
+  if (surface === 'steel-gate' && gateForegroundPlate) {
     const transform = gateTransform(gateDetailsPhoto);
     ctx.drawImage(gateForegroundPlate, transform.x, 0, gateForegroundPlate.width * transform.scale, CANVAS_HEIGHT);
   } else {
@@ -333,9 +318,6 @@ function toCanvasRect(rect: { left: number; top: number; right: number; bottom: 
 }
 
 export function getSurfaceObstacles(surface: CanvasSurface): RunoffObstacle[] {
-  if (surface === 'concrete' && concreteReady) {
-    return [toCanvasRect({ left: 0, top: concreteJoint.top, right: concretePhoto.naturalWidth, bottom: concreteJoint.bottom }, coverTransform(concretePhoto))];
-  }
   if (surface === 'steel-gate' && gateDetailsReady) {
     const transform = gateTransform(gateDetailsPhoto);
     return gateObstacleRects.map((rect) => toCanvasRect(rect, transform));

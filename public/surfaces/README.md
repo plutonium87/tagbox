@@ -37,10 +37,10 @@ Example configuration:
 
 - **Background:** required environment or base surface image, drawn beneath paint.
 - **Paint:** Marker and Spray deposits share the configured logical coordinate system. Marker runoff is rendered into the paint result.
-- **Foreground:** optional transparent surface details drawn above paint on the canvas display.
+- **Foreground:** optional transparent surface details. They draw above paint by default; Norrtåg and City park place their foregrounds behind paint so artwork can be sprayed on top.
 - **Paint mask:** optional restriction and opacity field for Marker, Spray and runoff deposition.
 
-The built-in Solid, Concrete and Steel Gate surfaces use 1920×1080. Norrtåg uses its source-native 2172×724 dimensions. Its background is the environment image, its foreground is the transparent train image, and its paint mask is sampled at the same coordinates. Norrtåg exports use a surface-specific foreground/paint order in the current application.
+The built-in Solid and Steel Gate surfaces use 1920×1080. Norrtåg and City park are registered through the surface manifest and each uses its configured 3240×1080 dimensions. Norrtåg's background is the environment image, its foreground is the transparent train image, and its paint mask is sampled at the same coordinates. Norrtåg and City park exports use their configured foreground/paint order in the current application.
 
 The fit option applies to background, foreground and paint mask: stretch (default) fills the configured dimensions; contain preserves the image ratio inside those bounds; cover preserves the ratio while filling and cropping to those bounds. Use native-sized, aligned files with the default fit when the source layers already match the configured dimensions.
 
@@ -52,13 +52,11 @@ The alpha mode uses the paint-mask image's alpha channel as paintability and ign
 
 There is no separate paint-opacity-map input. Grayscale paint opacity is implemented through paintMask. Although surface.json accepts a maps object for compatibility, those entries are not loaded or rendered. Roughness and normal maps are not implemented or configured as planned assets.
 
-## Current Norrtåg configuration
+## Registered custom surfaces
 
-The manifest currently registers Norrtåg. Its folder contains:
+The manifest registers Norrtåg and City park. Their current configurations are:
 
-- norrtag_bg.png: 2172×724 environment/background layer.
-- norrtag_v2.png: 2172×724 RGBA train foreground and paintability alpha source.
-- paint-mask.png: 2172×724 grayscale paint mask.
-- surface.json: dimensions, layer paths, mask mode, alpha source, navigation bounds, parallax and Railway ambience.
+- **Norrtåg:** 3240×1080; `norrtag_bg2.png` background, `norrtag_v3.png` foreground, and `norrtag_v3-paintmask.png` grayscale paint mask multiplied by foreground alpha. Uses Railway ambience.
+- **City park:** 3240×1080; `stone_wall__bg_3240x1080.png` background, `stone_wall_3240x1080.png` foreground, and `stone_wall_paintmask_3240x1080.png` grayscale paint mask. Uses park ambience.
 
 Static hosting cannot discover unregistered surface folders, so add each custom surface ID to the manifest and reload the app.

@@ -1,0 +1,13 @@
+{
+  "id": "citypark",
+  "name": "City park",
+  "width": 3240,
+  "height": 1080,
+  "background": "stone_wall__bg_3240x1080.png",
+  "foreground": "stone_wall_3240x1080.png",
+  "paintMask": "stone_wall_paintmask_3240x1080.png",
+  "paintMaskMode": "grayscale",
+  "navigationBounds": "paint-mask",
+  "environmentParallax": 0.08,
+  "ambience": "/audio/ambience/citypark.mp3"
+}

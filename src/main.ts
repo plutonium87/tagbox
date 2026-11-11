@@ -28,8 +28,10 @@ const splatterInput = document.querySelector<HTMLInputElement>('#paint-splatter'
 const spraySizeInput = document.querySelector<HTMLInputElement>('#spray-size')!;
 const sprayPressureInput = document.querySelector<HTMLInputElement>('#spray-pressure')!;
 const spraySmoothingInput = document.querySelector<HTMLInputElement>('#spray-smoothing')!;
-const sprayRotationInput = document.querySelector<HTMLInputElement>('#spray-rotation')!;
 const sprayRotationGroup = document.querySelector<HTMLElement>('#spray-rotation-group')!;
+const sprayRotationDial = document.querySelector<HTMLButtonElement>('#spray-rotation-dial')!;
+const sprayRotationTip = sprayRotationDial.querySelector<HTMLElement>('.rotation-tip-preview')!;
+const sprayRotationValue = document.querySelector<HTMLOutputElement>('#spray-rotation-value')!;
 const markerPanel = document.querySelector<HTMLElement>('#marker-panel')!;
 const sprayPanel = document.querySelector<HTMLElement>('#spray-panel')!;
 const toolbar = document.querySelector<HTMLElement>('.toolbar')!;
@@ -105,8 +107,6 @@ let activePointerId: number | null = null;
 let activePointerType: string | null = null;
 let activePointerPoint: Point | null = null;
 let lastCanvasPointer: PointerEvent | null = null;
-let rotationPointerId: number | null = null;
-let rotationLastPointerAngle: number | null = null;
 const touchCandidates = new Map<number, PointerEvent>();
 const touchPointerIds = new Set<number>();
 const viewportPointers = new Map<number, Point>();
@@ -118,6 +118,7 @@ let pinchStartPan: Point = { x: 0, y: 0 };
 let mousePanPointerId: number | null = null;
 let spacePanPointerId: number | null = null;
 let spacePanHeld = false;
+let mousePointerOverCanvas = false;
 let mousePanStart: Point = { x: 0, y: 0 };
 let mousePanOffset: Point = { x: 0, y: 0 };
 let navigatorDragPointerId: number | null = null;
@@ -127,6 +128,24 @@ let activeSurface: CanvasSurface = 'solid';
 let solidBackgroundColor = '#000000';
 let toolbarWasCollapsedBeforeFullscreen = true;
 const gestureMoveThreshold = 8;
+
+function updatePanCursor(): void {
+  const isPanActive = mousePanPointerId !== null || spacePanPointerId !== null;
+  const canShowPanCursor = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  canvas.style.cursor = canShowPanCursor && isPanActive
+    ? 'grabbing'
+    : canShowPanCursor && mousePointerOverCanvas && spacePanHeld ? 'grab' : 'crosshair';
+}
+
+function resetPanInteraction(): void {
+  const capturedPointerIds = new Set([mousePanPointerId, spacePanPointerId].filter((id): id is number => id !== null));
+  mousePanPointerId = null;
+  spacePanPointerId = null;
+  spacePanHeld = false;
+  mousePointerOverCanvas = false;
+  for (const pointerId of capturedPointerIds) if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+  updatePanCursor();
+}
 
 function updateBrushCursor(event: PointerEvent): void {
   lastCanvasPointer = event;
@@ -171,8 +190,8 @@ function setRotation(degrees: number): void {
   if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
 }
 
-function pointerRotationAngle(event: PointerEvent): number {
-  const rect = rotationDial.getBoundingClientRect();
+function pointerRotationAngle(event: PointerEvent, dial: HTMLButtonElement): number {
+  const rect = dial.getBoundingClientRect();
   const dx = event.clientX - (rect.left + rect.width / 2);
   const dy = event.clientY - (rect.top + rect.height / 2);
   const aroundDial = Math.atan2(dy, dx) * 180 / Math.PI + 90;
@@ -201,18 +220,70 @@ toolSelector.addEventListener('click', (event) => {
   if (button?.dataset.tool === 'marker' || button?.dataset.tool === 'spray') selectTool(button.dataset.tool);
 });
 
-function setRotationFromPointer(event: PointerEvent): void {
-  const angle = pointerRotationAngle(event);
-  if (rotationLastPointerAngle === null) {
-    setRotation(angle);
-  } else {
-    let delta = angle - rotationLastPointerAngle;
-    if (delta > 180) delta -= 360;
-    else if (delta < -180) delta += 360;
-    setRotation(settings.rotationDegrees + delta);
-  }
-  rotationLastPointerAngle = angle;
+function setSprayRotation(degrees: number): void {
+  spraySettings.rotationDegrees = Math.max(0, Math.min(360, Math.round(degrees)));
+  sprayRotationValue.textContent = `${spraySettings.rotationDegrees}°`;
+  sprayRotationDial.setAttribute('aria-valuenow', String(spraySettings.rotationDegrees));
+  sprayRotationDial.setAttribute('aria-valuetext', `${spraySettings.rotationDegrees} degrees`);
+  sprayRotationTip.style.transform = `translate(-50%, -50%) rotate(${spraySettings.rotationDegrees}deg)`;
+  if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
 }
+
+function bindRotationDial(dial: HTMLButtonElement, getDegrees: () => number, setDegrees: (degrees: number) => void): void {
+  let pointerId: number | null = null;
+  let previousAngle: number | null = null;
+
+  const setFromPointer = (event: PointerEvent): void => {
+    const angle = pointerRotationAngle(event, dial);
+    if (previousAngle === null) setDegrees(angle);
+    else {
+      let delta = angle - previousAngle;
+      if (delta > 180) delta -= 360;
+      else if (delta < -180) delta += 360;
+      setDegrees(getDegrees() + delta);
+    }
+    previousAngle = angle;
+  };
+
+  const stop = (event: PointerEvent): void => {
+    if (event.pointerId !== pointerId) return;
+    pointerId = null;
+    previousAngle = null;
+  };
+
+  const cancel = (): void => {
+    const capturedPointerId = pointerId;
+    pointerId = null;
+    previousAngle = null;
+    if (capturedPointerId !== null && dial.hasPointerCapture(capturedPointerId)) dial.releasePointerCapture(capturedPointerId);
+  };
+
+  dial.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    previousAngle = null;
+    dial.setPointerCapture(event.pointerId);
+    setFromPointer(event);
+  });
+  dial.addEventListener('pointermove', (event) => { if (event.pointerId === pointerId) setFromPointer(event); });
+  dial.addEventListener('pointerup', stop);
+  dial.addEventListener('pointercancel', stop);
+  dial.addEventListener('lostpointercapture', stop);
+  window.addEventListener('blur', cancel);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') cancel(); });
+  document.addEventListener('fullscreenchange', cancel);
+  dial.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 5 : 1;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') { event.preventDefault(); setDegrees(getDegrees() + step); }
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') { event.preventDefault(); setDegrees(getDegrees() - step); }
+    else if (event.key === 'Home') { event.preventDefault(); setDegrees(0); }
+    else if (event.key === 'End') { event.preventDefault(); setDegrees(360); }
+  });
+}
+
+bindRotationDial(rotationDial, () => settings.rotationDegrees, setRotation);
+bindRotationDial(sprayRotationDial, () => spraySettings.rotationDegrees, setSprayRotation);
 
 function setToolbarCollapsed(collapsed: boolean): void {
   toolbar.classList.toggle('is-collapsed', collapsed);
@@ -288,7 +359,7 @@ function drawNavigator(): void {
   navigatorContext.clearRect(0, 0, width, height);
   navigatorContext.fillStyle = '#17191a';
   navigatorContext.fillRect(0, 0, width, height);
-  const layers = activeSurface === 'norrtag'
+  const layers = activeSurface === 'norrtag' || activeSurface === 'citypark'
     ? [backgroundCanvas, foregroundCanvas, canvas, runoffCanvas]
     : [backgroundCanvas, canvas, runoffCanvas, foregroundCanvas];
   for (const layer of layers) {
@@ -410,29 +481,37 @@ canvas.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     cancelStroke();
     spacePanPointerId = event.pointerId;
+    updatePanCursor();
     mousePanStart = { x: event.clientX, y: event.clientY };
     mousePanOffset = { ...navigation.pan };
     canvas.setPointerCapture(event.pointerId);
     return;
   }
-  if (touchNavigationActive || event.button !== 0 && event.button !== 1) return;
-  if (event.button === 1) {
+  if (touchNavigationActive) return;
+  if (event.button === 1 || (event.pointerType === 'mouse' && event.button === 2)) {
     event.preventDefault();
     cancelStroke();
     mousePanPointerId = event.pointerId;
     mousePanStart = { x: event.clientX, y: event.clientY };
     mousePanOffset = { ...navigation.pan };
     canvas.setPointerCapture(event.pointerId);
+    updatePanCursor();
     return;
   }
+  if (event.button !== 0) return;
   if (isDrawing) return;
   event.preventDefault();
   canvas.setPointerCapture(event.pointerId);
   touchCandidates.clear();
   startStroke(event);
 });
-canvas.addEventListener('pointerenter', updateBrushCursor);
+canvas.addEventListener('pointerenter', (event) => {
+  if (event.pointerType === 'mouse') { mousePointerOverCanvas = true; updatePanCursor(); }
+  updateBrushCursor(event);
+});
+canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'mouse') { mousePointerOverCanvas = true; updatePanCursor(); }
   updateBrushCursor(event);
   if (isDrawing && event.pointerId === activePointerId) activePointerPoint = { x: event.clientX, y: event.clientY };
   const canShakeEligible = event.pointerType === 'mouse' && event.buttons === 0 && activeTool === 'spray' && !isDrawing && !spacePanHeld && spacePanPointerId === null && mousePanPointerId === null && navigatorDragPointerId === null && !touchNavigationActive;
@@ -481,8 +560,9 @@ canvas.addEventListener('pointermove', (event) => {
   requestNavigatorRender();
 });
 canvas.addEventListener('pointerleave', (event) => {
+  if (event.pointerType === 'mouse') { mousePointerOverCanvas = false; updatePanCursor(); }
   if (!isDrawing) brushCursor.hidden = true;
-  if (spacePanPointerId === event.pointerId && !canvas.hasPointerCapture(event.pointerId)) spacePanPointerId = null;
+  if (spacePanPointerId === event.pointerId && !canvas.hasPointerCapture(event.pointerId)) { spacePanPointerId = null; updatePanCursor(); }
 });
 function finishStroke(event?: PointerEvent): void {
   if (!isDrawing) return;
@@ -509,8 +589,8 @@ function finishStroke(event?: PointerEvent): void {
   requestNavigatorRender();
 }
 canvas.addEventListener('pointerup', (event) => {
-  if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; return; }
-  if (spacePanPointerId === event.pointerId) { spacePanPointerId = null; return; }
+  if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; updatePanCursor(); return; }
+  if (spacePanPointerId === event.pointerId) { spacePanPointerId = null; updatePanCursor(); return; }
   const wasTouch = touchPointerIds.has(event.pointerId);
   if (wasTouch) touchPointerIds.delete(event.pointerId);
   if (viewportPointers.has(event.pointerId)) {
@@ -534,8 +614,8 @@ canvas.addEventListener('pointerup', (event) => {
   if (wasTouch && touchPointerIds.size === 0) requestNavigatorRender();
 });
 canvas.addEventListener('pointercancel', (event) => {
-  if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; return; }
-  if (spacePanPointerId === event.pointerId) { spacePanPointerId = null; return; }
+  if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; updatePanCursor(); return; }
+  if (spacePanPointerId === event.pointerId) { spacePanPointerId = null; updatePanCursor(); return; }
   const wasTouch = touchPointerIds.delete(event.pointerId);
   viewportPointers.delete(event.pointerId);
   if (touchPointerIds.size === 0) touchNavigationActive = false;
@@ -547,8 +627,8 @@ canvas.addEventListener('pointercancel', (event) => {
   if (isDrawing && event.pointerId === activePointerId) cancelStroke();
 });
 canvas.addEventListener('lostpointercapture', (event) => {
-  if (mousePanPointerId === event.pointerId) mousePanPointerId = null;
-  if (spacePanPointerId === event.pointerId) spacePanPointerId = null;
+  if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; updatePanCursor(); }
+  if (spacePanPointerId === event.pointerId) { spacePanPointerId = null; updatePanCursor(); }
   touchPointerIds.delete(event.pointerId);
   touchCandidates.delete(event.pointerId);
   viewportPointers.delete(event.pointerId);
@@ -576,9 +656,11 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     if (!spacePanHeld) {
       spacePanHeld = true;
+      updatePanCursor();
       canShakeDetector.reset();
       if (isDrawing && activePointerId !== null && activePointerType === 'mouse') {
         spacePanPointerId = activePointerId;
+        updatePanCursor();
         const point = activePointerPoint ?? { x: 0, y: 0 };
         mousePanStart = { ...point };
         mousePanOffset = { ...navigation.pan };
@@ -603,19 +685,16 @@ document.addEventListener('keyup', (event) => {
   const wasSpacePanHeld = spacePanHeld;
   spacePanHeld = false;
   spacePanPointerId = null;
+  updatePanCursor();
   if (wasSpacePanHeld) event.preventDefault();
 }, true);
 window.addEventListener('blur', () => {
-  spacePanHeld = false;
-  spacePanPointerId = null;
-  mousePanPointerId = null;
+  resetPanInteraction();
   canShakeDetector.reset();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    spacePanHeld = false;
-    spacePanPointerId = null;
-    mousePanPointerId = null;
+    resetPanInteraction();
     canShakeDetector.reset();
   }
 });
@@ -687,6 +766,7 @@ helpDialog.addEventListener('click', (event) => {
 });
 helpDialog.addEventListener('close', () => helpButton.focus());
 document.addEventListener('fullscreenchange', () => {
+  resetPanInteraction();
   resizeCanvas();
   if (!document.fullscreenElement && appShell.classList.contains('canvas-only')) {
     appShell.classList.remove('canvas-only'); modeButton.textContent = 'Fullscreen';
@@ -723,11 +803,6 @@ sprayPressureInput.addEventListener('input', () => {
 spraySmoothingInput.addEventListener('input', () => {
   spraySettings.smoothing = Number(spraySmoothingInput.value) / 100;
   document.querySelector('#spray-smoothing-value')!.textContent = `${spraySmoothingInput.value}%`;
-});
-sprayRotationInput.addEventListener('input', () => {
-  spraySettings.rotationDegrees = Number(sprayRotationInput.value);
-  document.querySelector('#spray-rotation-value')!.textContent = `${spraySettings.rotationDegrees}°`;
-  if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
 });
 document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((button) => button.addEventListener('click', () => {
   if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy') return;
@@ -891,14 +966,17 @@ function renderSurfaceOptions(): void {
   surfacePicker.replaceChildren();
   const options: Array<{ id: string; name: string; thumb: string }> = [
     { id: 'solid', name: 'Solid', thumb: 'surface-thumb-solid' },
-    { id: 'concrete', name: 'Concrete', thumb: 'surface-thumb-concrete' },
     { id: 'steel-gate', name: 'Steel Gate', thumb: 'surface-thumb-steel' },
-    ...getCustomSurfaces().map(({ id, name }) => ({ id, name, thumb: 'surface-thumb-custom' })),
+    ...getCustomSurfaces().map(({ id, name }) => ({ id, name, thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : 'surface-thumb-custom' })),
   ];
   for (const option of options) {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'surface-option'; button.dataset.surface = option.id;
-    const thumb = document.createElement('span'); thumb.className = `surface-thumb ${option.thumb}`; thumb.setAttribute('aria-hidden', 'true');
+    const thumb = option.id === 'norrtag' || option.id === 'citypark' ? document.createElement('img') : document.createElement('span');
+    thumb.className = `surface-thumb ${option.thumb}`;
+    thumb.setAttribute('aria-hidden', 'true');
+    if (thumb instanceof HTMLImageElement) { thumb.src = '/surfaces/norrtag/norrtag_v3.png'; thumb.alt = ''; thumb.draggable = false; }
+    if (thumb instanceof HTMLImageElement && option.id === 'citypark') thumb.src = '/surfaces/citypark-thumbnail.png';
     const label = document.createElement('span'); label.textContent = option.name;
     button.append(thumb, label);
     surfacePicker.append(button);
@@ -915,6 +993,7 @@ function updateSurface(): void {
     resizeCanvas();
   }
   canvas.parentElement!.classList.toggle('surface-norrtag', activeSurface === 'norrtag');
+  canvas.parentElement!.classList.toggle('surface-citypark', activeSurface === 'citypark');
   navigation.setBounds(getSurfaceNavigationBounds(activeSurface));
   audio.setSurfaceAmbience(getSurfaceAmbience(activeSurface));
   surfacePicker.querySelectorAll<HTMLButtonElement>('.surface-option').forEach((button) => {
@@ -942,7 +1021,7 @@ surfacePicker.addEventListener('click', (event) => {
 });
 window.addEventListener('tagbox-surface-assets-ready', updateSurface);
 window.addEventListener('tagbox-custom-surfaces-ready', () => {
-  if (activeSurface !== 'solid' && activeSurface !== 'concrete' && activeSurface !== 'steel-gate' && !getCustomSurfaces().some(({ id }) => id === activeSurface)) activeSurface = 'solid';
+  if (activeSurface !== 'solid' && activeSurface !== 'steel-gate' && !getCustomSurfaces().some(({ id }) => id === activeSurface)) activeSurface = 'solid';
   renderSurfaceOptions();
 });
 renderSurfaceOptions();
@@ -952,7 +1031,7 @@ document.querySelector<HTMLButtonElement>('#export-button')!.addEventListener('c
   const output = document.createElement('canvas'); output.width = CANVAS_WIDTH; output.height = CANVAS_HEIGHT;
   const ctx = output.getContext('2d')!;
   ctx.drawImage(backgroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  if (activeSurface === 'norrtag') {
+  if (activeSurface === 'norrtag' || activeSurface === 'citypark') {
     ctx.drawImage(foregroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.drawImage(canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   } else {
@@ -983,26 +1062,6 @@ document.querySelectorAll<HTMLButtonElement>('.brush-shape-option').forEach((but
     option.setAttribute('aria-pressed', String(selected));
   });
 }));
-rotationDial.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  rotationPointerId = event.pointerId;
-  rotationLastPointerAngle = null;
-  rotationDial.setPointerCapture(event.pointerId);
-  setRotationFromPointer(event);
-});
-rotationDial.addEventListener('pointermove', (event) => {
-  if (event.pointerId === rotationPointerId) setRotationFromPointer(event);
-});
-const stopRotation = (event: PointerEvent): void => { if (event.pointerId === rotationPointerId) { rotationPointerId = null; rotationLastPointerAngle = null; } };
-rotationDial.addEventListener('pointerup', stopRotation);
-rotationDial.addEventListener('pointercancel', stopRotation);
-rotationDial.addEventListener('keydown', (event) => {
-  const step = event.shiftKey ? 5 : 1;
-  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') { event.preventDefault(); setRotation(settings.rotationDegrees + step); }
-  else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') { event.preventDefault(); setRotation(settings.rotationDegrees - step); }
-  else if (event.key === 'Home') { event.preventDefault(); setRotation(0); }
-  else if (event.key === 'End') { event.preventDefault(); setRotation(360); }
-});
 function undo(): void {
   if (!operations.length) return;
   operations.pop(); renderer.setOperations(operations); undoButton.disabled = operations.length === 0;

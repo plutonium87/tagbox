@@ -47,6 +47,19 @@ This document tracks third-party assets used in Tagbox. Paths below are relative
 - **Modifications:** Edited; details not documented
 - **Attribution required:** No
 
+### City Park
+
+- **Edited playback file:** `public/audio/ambience/citypark.mp3`, used by the City Park surface (`public/surfaces/citypark/surface.json`). Voices were removed from the recording.
+- **Retained original source recording (not used for playback):** `public/audio/ambience/freesound_community-park-ambience-near-a-street-51943.mp3`
+- **Original title:** freesound_community-park-ambience-near-a-street-51943
+- **Creator:** freesound_community
+- **Source:** https://pixabay.com/sound-effects/city-park-ambience-near-a-street-51943/
+- **Source platform:** Pixabay
+- **License:** Pixabay Content License
+- **Download date:** 2026-11-11
+- **Modifications:** The playback file was edited from the retained original source recording; voices were removed.
+- **Attribution required:** No
+
 ### Audio files needing documentation
 
 - `public/audio/ambience/freesound_community-engine-train-idle-19988.mp3` is not configured for playback. Its filename suggests the same recording title listed for `railway.mp3`, but the available notes do not establish whether it is the source recording, an alternate encode, or a separate asset. The Railway attribution above is documented for `railway.mp3`; its applicability to this additional local file needs confirmation.

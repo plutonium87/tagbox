@@ -2,6 +2,30 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.0.0] - 2026-11-11
+
+### Added
+
+- Added the City park surface with its park background, stone-wall artwork, paint mask and park ambience.
+- Added the Marker-style graphical rotation dial for the Calligraphy Spray nozzle.
+- Added right-button canvas panning with pan cursors and browser context-menu suppression over the canvas.
+- Added grab and grabbing cursor feedback for Spacebar panning.
+
+### Changed
+
+- Updated the Calligraphy stamp spacing floor for small Spray Sizes while leaving Standard Spray spacing unchanged.
+- Updated Norrtåg and City park to their configured 3240×1080 surface dimensions.
+- Updated release documentation and the in-app guide for the available surfaces and navigation controls.
+
+### Fixed
+
+- Corrected Calligraphy stamp geometry that applied the narrow-axis scaling twice, reducing the deposited shape and leaving gaps between stamps.
+- Clear pan pointer capture and cursor state after pointer cancellation, window blur, hidden tabs and fullscreen transitions.
+
+### Removed
+
+- Removed Concrete as a selectable surface and removed its surface-only joint rendering and runoff behavior. The shared photo used behind Steel Gate remains.
+
 ## [0.9.9] - 2026-11-08 (release candidate)
 
 ### Added

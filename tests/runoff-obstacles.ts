@@ -24,51 +24,21 @@ function maxRunoffY(engine: RunoffEngine, stroke: Stroke, inside?: RunoffObstacl
   return maxY;
 }
 
-function sampleGeometry(engine: RunoffEngine, stroke: Stroke): number[] {
-  let sample: number[] = [];
-  engine.forEachGeometry(stroke, (_component, geometry) => { if (!sample.length && geometry.length) sample = [...geometry.slice(0, 20)]; });
-  return sample;
-}
-
-function buildEngine(obstacles: RunoffObstacle[]): { engine: RunoffEngine; stroke: Stroke } {
-  const engine = new RunoffEngine(); engine.setIntensity(1); engine.setObstacles(obstacles);
-  const stroke = makeStroke(); engine.addDabs(stroke, stroke.dabs, 1000, 1920, 1080);
-  return { engine, stroke };
-}
-
 try {
   await new Promise<void>((resolve) => {
     const poll = (): void => {
-      if (getSurfaceObstacles('concrete').length && getSurfaceObstacles('steel-gate').length) resolve();
+      if (getSurfaceObstacles('steel-gate').length) resolve();
       else window.setTimeout(poll, 25);
     };
     poll();
   });
 
-  const concrete = getSurfaceObstacles('concrete')[0];
   const steel = getSurfaceObstacles('steel-gate');
-  check(Boolean(concrete) && steel.length === 2, 'Photographic surface assets did not provide their obstacle masks.');
+  check(steel.length === 2, 'Steel gate assets did not provide both obstacle masks.');
 
   const originalRandom = Math.random;
   Math.random = () => 0;
   try {
-    const blocked = buildEngine([concrete]);
-    for (let i = 0; i < 120; i++) blocked.engine.advance(0.05);
-    const blockedMaxY = maxRunoffY(blocked.engine, blocked.stroke);
-    check(blockedMaxY > 500, 'Blocked runoff did not generate geometry.');
-    check(blockedMaxY <= concrete.top + 0.05, `Runoff crossed the concrete joint: ${blockedMaxY} > ${concrete.top}; mask=${JSON.stringify(concrete)}; sample=${JSON.stringify(sampleGeometry(blocked.engine, blocked.stroke))}.`);
-
-    const unblocked = buildEngine([]);
-    for (let i = 0; i < 120; i++) unblocked.engine.advance(0.05);
-    const unblockedMaxY = maxRunoffY(unblocked.engine, unblocked.stroke);
-    check(unblockedMaxY > concrete.bottom + 20, 'Control runoff failed to continue below the joint position.');
-
-    const dynamic = buildEngine([]);
-    for (let i = 0; i < 50; i++) dynamic.engine.advance(0.05);
-    check(maxRunoffY(dynamic.engine, dynamic.stroke) > concrete.top, 'Dynamic test did not cross the seam before applying its mask.');
-    dynamic.engine.setObstacles([concrete]);
-    check(maxRunoffY(dynamic.engine, dynamic.stroke) <= concrete.top + 0.05, 'Applying a surface mask did not clip existing runoff.');
-
     const threshold = steel.find((obstacle) => obstacle.top > 900)!;
     check(Boolean(threshold), 'Steel gate threshold mask was not found.');
     const gate = new RunoffEngine(); gate.setIntensity(1); gate.setObstacles([threshold]);
@@ -83,7 +53,7 @@ try {
   }
 
   result.dataset.state = 'passed';
-  result.textContent = `PASS\nConcrete construction seam stops runoff at y=${concrete.top.toFixed(1)} px.\nUnblocked control continues below the seam.\nApplying a surface mask clips existing runoff.\nSteel gate threshold stops runoff at y=${steel.find((obstacle) => obstacle.top > 900)!.top.toFixed(1)} px.`;
+  result.textContent = `PASS\nSteel gate threshold stops runoff at y=${steel.find((obstacle) => obstacle.top > 900)!.top.toFixed(1)} px.`;
 } catch (error) {
   result.dataset.state = 'failed';
   result.textContent = `FAIL\n${error instanceof Error ? error.stack ?? error.message : String(error)}`;

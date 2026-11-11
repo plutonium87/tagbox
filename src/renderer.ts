@@ -66,6 +66,46 @@ void main(){
   vec3 color=linearToSrgb(linearColor/(vec3(1.0)+linearColor));
   outColor=vec4(color,coverage);
 }`;
+const mirrorBallChromeFragment = `#version 300 es
+precision highp float;
+in highp vec2 v_uv;
+uniform highp sampler2D u_silverMask;
+uniform highp sampler2D u_copperMask;
+uniform highp sampler2D u_goldMask;
+uniform highp sampler2D u_reflectionMap;
+uniform highp float u_reflectionIntensity;
+out highp vec4 outColor;
+float silhouette(vec2 uv){ float s=texture(u_silverMask,uv).a; float c=texture(u_copperMask,uv).a; float g=texture(u_goldMask,uv).a; return 1.0-(1.0-s)*(1.0-c)*(1.0-g); }
+vec3 srgbToLinear(vec3 c){ return mix(pow((c+0.055)/1.055,vec3(2.4)),c/12.92,lessThanEqual(c,vec3(0.04045))); }
+vec3 linearToSrgb(vec3 c){ c=max(c,vec3(0.0)); return mix(1.055*pow(c,vec3(1.0/2.4))-0.055,12.92*c,lessThanEqual(c,vec3(0.0031308))); }
+void main(){
+  float silver=texture(u_silverMask,v_uv).a; float copper=texture(u_copperMask,v_uv).a; float gold=texture(u_goldMask,v_uv).a;
+  float coverage=1.0-(1.0-silver)*(1.0-copper)*(1.0-gold); if(coverage<=0.001) discard;
+  float weight=max(silver+copper+gold,0.001);
+  vec3 tint=(silver*vec3(0.72,0.76,0.80)+copper*vec3(0.64,0.30,0.16)+gold*vec3(0.78,0.57,0.16))/weight;
+  vec2 texel=1.0/vec2(textureSize(u_silverMask,0));
+  vec2 stepUv=texel*12.0;
+  float left=silhouette(v_uv-vec2(stepUv.x,0.0)); float right=silhouette(v_uv+vec2(stepUv.x,0.0));
+  float top=silhouette(v_uv+vec2(0.0,stepUv.y)); float bottom=silhouette(v_uv-vec2(0.0,stepUv.y));
+  vec2 slope=vec2(right-left,top-bottom);
+  vec3 normal=normalize(vec3(-slope*2.2,1.0));
+  vec3 viewDirection=vec3(0.0,0.0,1.0);
+  vec3 reflectionDirection=reflect(-viewDirection,normal);
+  // Mirror-ball projection: map a reflected direction to its half-vector on
+  // the source sphere. The supplied image fills the disk in both dimensions.
+  float denominator=sqrt(max(2.0*(1.0+reflectionDirection.z),0.0001));
+  vec2 mirrorBallUv=clamp(0.5+0.5*reflectionDirection.xy/denominator,vec2(0.0),vec2(1.0));
+  float reflectionSrgb=texture(u_reflectionMap,mirrorBallUv).r;
+  float reflectionLinear=srgbToLinear(vec3(reflectionSrgb)).r;
+  vec3 tintLinear=srgbToLinear(tint);
+  float fresnel=pow(1.0-normal.z,2.0);
+  vec3 reflected=tintLinear*(0.025+2.1*reflectionLinear);
+  vec3 body=tintLinear*(0.07+0.06*normal.z);
+  vec3 linearColor=mix(body,reflected,clamp(u_reflectionIntensity,0.0,1.0)*(0.82+0.18*fresnel));
+  linearColor+=tintLinear*pow(max(dot(normal,normalize(vec3(-0.25,0.55,0.79))),0.0),38.0)*0.45;
+  vec3 color=linearToSrgb(linearColor/(vec3(1.0)+linearColor));
+  outColor=vec4(color,coverage);
+}`;
 const dabVertex = `#version 300 es
 precision highp float; precision highp int;
 in highp vec3 a_dab; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_brushSize; uniform highp int u_shape; out highp float v_angle; out highp float v_brushSizePx; out highp float v_pointSize; out highp vec2 v_world;
@@ -82,7 +122,8 @@ void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.
 const sprayFragment = `#version 300 es
 precision highp float;
 uniform highp vec3 u_color; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp float u_nozzleAspect; in highp float v_pressure; in highp vec2 v_uv; in highp vec2 v_world; in highp vec2 v_center; out highp vec4 outColor;
-void main(){ vec2 p=v_uv-vec2(0.5); vec2 shapePoint=vec2(p.x,p.y/u_nozzleAspect); float r=length(shapePoint)*2.0; float angle=atan(shapePoint.y,shapePoint.x); float phase=v_center.x*0.17+v_center.y*0.13; float boundary=1.0+sin(angle*5.0+phase)*0.025+sin(angle*9.0-phase*0.7)*0.012; if(r>boundary) discard; r/=boundary; float pressure=clamp(v_pressure,0.0,1.0); float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); float paintability=u_hasPaintMask==1?texture(u_paintMask,vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y)).r:1.0; outColor=vec4(u_color,density*falloff*paintability); }`;
+// The vertex shader already scales the quad by nozzle aspect; UVs span that full footprint.
+void main(){ vec2 p=v_uv-vec2(0.5); vec2 shapePoint=p; float r=length(shapePoint)*2.0; float angle=atan(shapePoint.y,shapePoint.x); float phase=v_center.x*0.17+v_center.y*0.13; float boundary=1.0+sin(angle*5.0+phase)*0.025+sin(angle*9.0-phase*0.7)*0.012; if(r>boundary) discard; r/=boundary; float pressure=clamp(v_pressure,0.0,1.0); float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); float paintability=u_hasPaintMask==1?texture(u_paintMask,vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y)).r:1.0; outColor=vec4(u_color,density*falloff*paintability); }`;
 const runoffVertex = `#version 300 es
 precision highp float;
 in highp vec2 a_position; in highp vec3 a_color; uniform highp vec2 u_resolution; out highp vec3 v_color; out highp vec2 v_world;
@@ -98,8 +139,11 @@ export class CanvasRenderer {
   private displayProgram: WebGLProgram;
   private chromeProgram: WebGLProgram;
   private environmentChromeProgram: WebGLProgram;
+  private mirrorBallChromeProgram: WebGLProgram;
   private environmentTexture: WebGLTexture;
   private environmentReady = false;
+  private reflectionTexture: WebGLTexture;
+  private reflectionReady = false;
   private runoffProgram: WebGLProgram;
   private sprayProgram: WebGLProgram;
   private baseVao: WebGLVertexArrayObject;
@@ -136,6 +180,7 @@ export class CanvasRenderer {
     this.displayProgram = this.createProgram(baseGl, fullscreenVertex, displayFragment, 'canvas display');
     this.chromeProgram = this.createProgram(baseGl, fullscreenVertex, chromeFragment, 'chrome composite');
     this.environmentChromeProgram = this.createProgram(baseGl, fullscreenVertex, environmentChromeFragment, 'environment chrome composite');
+    this.mirrorBallChromeProgram = this.createProgram(baseGl, fullscreenVertex, mirrorBallChromeFragment, 'mirror-ball chrome composite');
     this.environmentTexture = this.createTexture(baseGl);
     baseGl.bindTexture(baseGl.TEXTURE_2D, this.environmentTexture);
     baseGl.texImage2D(baseGl.TEXTURE_2D, 0, baseGl.RGBA8, 1, 1, 0, baseGl.RGBA, baseGl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
@@ -153,6 +198,29 @@ export class CanvasRenderer {
       this.scheduleRender(true);
     };
     environment.src = '/chrome-environment.png';
+    this.reflectionTexture = this.createTexture(baseGl);
+    baseGl.bindTexture(baseGl.TEXTURE_2D, this.reflectionTexture);
+    baseGl.texImage2D(baseGl.TEXTURE_2D, 0, baseGl.R8, 1, 1, 0, baseGl.RED, baseGl.UNSIGNED_BYTE, new Uint8Array([255]));
+    const reflection = new Image();
+    reflection.onload = () => {
+      baseGl.bindTexture(baseGl.TEXTURE_2D, this.reflectionTexture);
+      baseGl.pixelStorei(baseGl.UNPACK_FLIP_Y_WEBGL, 1);
+      // Preserve the PNG's grayscale byte values for scalar shader sampling.
+      baseGl.pixelStorei(baseGl.UNPACK_COLORSPACE_CONVERSION_WEBGL, baseGl.NONE);
+      try {
+        baseGl.texImage2D(baseGl.TEXTURE_2D, 0, baseGl.R8, baseGl.RED, baseGl.UNSIGNED_BYTE, reflection);
+        this.reflectionReady = baseGl.getError() === baseGl.NO_ERROR;
+      } catch {
+        this.reflectionReady = false;
+      }
+      baseGl.pixelStorei(baseGl.UNPACK_FLIP_Y_WEBGL, 0);
+      this.scheduleRender(true);
+    };
+    reflection.onerror = () => {
+      this.reflectionReady = false;
+      this.scheduleRender(true);
+    };
+    reflection.src = '/reflection_8bit_grayscale.png';
     this.runoffProgram = this.createProgram(baseGl, runoffVertex, runoffFragment, 'runoff');
     this.sprayProgram = this.createProgram(baseGl, sprayVertex, sprayFragment, 'spray particles');
     const baseVao = baseGl.createVertexArray();
@@ -440,8 +508,9 @@ export class CanvasRenderer {
     const gl = this.baseGl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.baseFramebuffer);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    const useEnvironment = this.environmentReady;
-    const program = useEnvironment ? this.environmentChromeProgram : this.chromeProgram;
+    const program = this.reflectionReady
+      ? this.mirrorBallChromeProgram
+      : this.environmentReady ? this.environmentChromeProgram : this.chromeProgram;
     gl.useProgram(program);
     chromeMaterials.forEach((material, index) => {
       gl.activeTexture(gl.TEXTURE0 + index);
@@ -449,7 +518,11 @@ export class CanvasRenderer {
       const uniformName = material === 'silver-chrome' ? 'u_silverMask' : material === 'copper-chrome' ? 'u_copperMask' : 'u_goldMask';
       gl.uniform1i(gl.getUniformLocation(program, uniformName), index);
     });
-    if (useEnvironment) {
+    if (this.reflectionReady) {
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.reflectionTexture);
+      gl.uniform1i(gl.getUniformLocation(program, 'u_reflectionMap'), 3);
+      gl.uniform1f(gl.getUniformLocation(program, 'u_reflectionIntensity'), 1.0);
+    } else if (this.environmentReady) {
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.environmentTexture);
       gl.uniform1i(gl.getUniformLocation(program, 'u_environment'), 3);
       gl.uniform1f(gl.getUniformLocation(program, 'u_reflectionIntensity'), 1.0);

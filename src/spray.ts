@@ -21,10 +21,11 @@ export class SprayEngine {
     this.depositCount = 0;
     this.buffer = new Float32Array(0);
     this.filter = new PointerFilter(smoothing);
-    // Calligraphy's narrow axis is only 18% of its diameter. Sample densely
-    // enough for its feathered dabs to overlap even when the oval is sideways
-    // to the stroke direction. Standard Spray keeps its original spacing.
-    const spacing = nozzle === 'calligraphy' ? Math.max(1, size * 0.045) : Math.max(2, size * 0.14);
+    // Calligraphy's narrow axis is only 18% of its diameter and its dabs fade
+    // at the edge, so keep their centers close enough for consistent overlap.
+    // A subpixel floor avoids a 1 px gap when the nib is at minimum size.
+    // Standard Spray keeps its original spacing.
+    const spacing = nozzle === 'calligraphy' ? Math.max(0.5, size * 0.045) : Math.max(2, size * 0.14);
     this.interpolator = new StrokeInterpolator(spacing);
     this.lastRaw = { ...point };
     const filtered = this.filter.push(point, time);
