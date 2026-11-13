@@ -5,20 +5,30 @@ import { timestampedExportFilename } from './export-filename';
 import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
 import { pointerPosition, CanvasRenderer } from './renderer';
-import { drawForeground, drawSurface, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, type CanvasSurface } from './surfaces';
-import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
+import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, surfaceManifestPromise, type CanvasSurface } from './surfaces';
+import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
 const runoffCanvas = document.querySelector<HTMLCanvasElement>('#runoff-canvas')!;
 const backgroundCanvas = document.querySelector<HTMLCanvasElement>('#background-canvas')!;
 const foregroundCanvas = document.querySelector<HTMLCanvasElement>('#foreground-canvas')!;
+let renderer: CanvasRenderer;
+try {
+  renderer = new CanvasRenderer(canvas, runoffCanvas);
+} catch (error) {
+  const indicator = document.querySelector<HTMLElement>('#loading-indicator');
+  const task = document.querySelector<HTMLElement>('#loading-task');
+  const spinner = document.querySelector<HTMLElement>('.loading-spinner');
+  if (indicator && task) { indicator.hidden = false; task.textContent = `Could not initialize canvas renderer: ${error instanceof Error ? error.message : 'WebGL is unavailable.'}`; }
+  if (spinner) spinner.hidden = true;
+  throw error;
+}
 let CANVAS_WIDTH = DEFAULT_CANVAS_WIDTH;
 let CANVAS_HEIGHT = DEFAULT_CANVAS_HEIGHT;
-const renderer = new CanvasRenderer(canvas, runoffCanvas);
 const navigation = new CanvasNavigation(CANVAS_WIDTH, CANVAS_HEIGHT);
 document.querySelector<HTMLElement>('#brand-version')!.textContent = `v${__TAGBOX_VERSION__}`;
 const operations: PaintOperation[] = [];
-const brush = new BrushEngine((stroke, dabs) => renderer.setActive(stroke, dabs));
+const brush = new BrushEngine((stroke, dabs) => strokeTool === 'erase' ? renderer.setActiveErase(stroke, dabs) : renderer.setActive(stroke, dabs));
 const spray = new SprayEngine((stroke, particles) => renderer.setActiveSpray(stroke, particles));
 const sizeInput = document.querySelector<HTMLInputElement>('#brush-size')!;
 const smoothingInput = document.querySelector<HTMLInputElement>('#smoothing')!;
@@ -26,6 +36,7 @@ const wetnessInput = document.querySelector<HTMLInputElement>('#wetness')!;
 const intensityInput = document.querySelector<HTMLInputElement>('#run-intensity')!;
 const splatterInput = document.querySelector<HTMLInputElement>('#paint-splatter')!;
 const spraySizeInput = document.querySelector<HTMLInputElement>('#spray-size')!;
+const eraserSizeInput = document.querySelector<HTMLInputElement>('#eraser-size')!;
 const sprayPressureInput = document.querySelector<HTMLInputElement>('#spray-pressure')!;
 const spraySmoothingInput = document.querySelector<HTMLInputElement>('#spray-smoothing')!;
 const sprayRotationGroup = document.querySelector<HTMLElement>('#spray-rotation-group')!;
@@ -34,6 +45,7 @@ const sprayRotationTip = sprayRotationDial.querySelector<HTMLElement>('.rotation
 const sprayRotationValue = document.querySelector<HTMLOutputElement>('#spray-rotation-value')!;
 const markerPanel = document.querySelector<HTMLElement>('#marker-panel')!;
 const sprayPanel = document.querySelector<HTMLElement>('#spray-panel')!;
+const erasePanel = document.querySelector<HTMLElement>('#erase-panel')!;
 const toolbar = document.querySelector<HTMLElement>('.toolbar')!;
 const toolbarToggle = document.querySelector<HTMLButtonElement>('#toolbar-toggle')!;
 const toolSelector = document.querySelector<HTMLElement>('#tool-selector')!;
@@ -65,6 +77,11 @@ const navigatorContext = navigatorCanvas.getContext('2d')!;
 const navigatorViewport = document.querySelector<HTMLElement>('#navigator-viewport')!;
 const navigatorToggle = document.querySelector<HTMLButtonElement>('#navigator-toggle')!;
 const canvasStage = canvas.parentElement!;
+const linePreviewCanvas = document.querySelector<HTMLCanvasElement>('#line-preview-canvas')!;
+const linePreviewContext = linePreviewCanvas.getContext('2d')!;
+const loadingIndicator = document.querySelector<HTMLElement>('#loading-indicator')!;
+const loadingTask = document.querySelector<HTMLElement>('#loading-task')!;
+const loadingRetry = document.querySelector<HTMLButtonElement>('#loading-retry')!;
 const soundToggle = document.querySelector<HTMLButtonElement>('#sound-toggle')!;
 const soundPanelToggle = document.querySelector<HTMLButtonElement>('#sound-panel-toggle')!;
 const soundVolumeInputs = {
@@ -98,8 +115,8 @@ if (window.matchMedia('(pointer: coarse)').matches) {
     appShell.addEventListener(gesture, (event) => event.preventDefault(), { passive: false });
   }
 }
-let activeTool: 'marker' | 'spray' = 'marker';
-let strokeTool: 'marker' | 'spray' | null = null;
+let activeTool: 'marker' | 'spray' | 'erase' = 'marker';
+let strokeTool: 'marker' | 'spray' | 'erase' | null = null;
 const shapeRotations: Record<'square' | 'chisel' | 'split-chisel', number> = { square: 0, chisel: 140, 'split-chisel': 140 };
 let isDrawing = false;
 let holdTimer = 0;
@@ -125,6 +142,10 @@ let navigatorDragPointerId: number | null = null;
 let navigatorDragOffset: Point = { x: 0, y: 0 };
 let navigatorRenderFrame = 0;
 let activeSurface: CanvasSurface = 'solid';
+let surfaceRequest = 0;
+let pendingSurface: CanvasSurface | null = null;
+let lineAnchor: Point | null = null;
+let lineTool: 'marker' | 'spray' | 'erase' | null = null;
 let solidBackgroundColor = '#000000';
 let toolbarWasCollapsedBeforeFullscreen = true;
 const gestureMoveThreshold = 8;
@@ -154,7 +175,7 @@ function updateBrushCursor(event: PointerEvent): void {
   const stageRect = stage.getBoundingClientRect();
   const canvasRect = canvas.getBoundingClientRect();
   const scale = canvasRect.width / CANVAS_WIDTH;
-  const size = (activeTool === 'spray' ? spraySettings.size : settings.size) * scale;
+  const size = (activeTool === 'spray' ? spraySettings.size : activeTool === 'erase' ? eraserSettings.size : settings.size) * scale;
   brushCursor.style.left = `${event.clientX - stageRect.left - stage.clientLeft}px`;
   brushCursor.style.top = `${event.clientY - stageRect.top - stage.clientTop}px`;
   if (activeTool === 'spray') {
@@ -168,6 +189,12 @@ function updateBrushCursor(event: PointerEvent): void {
     brushCursorTip.style.background = 'radial-gradient(circle, rgba(220,225,222,.18) 0%, rgba(220,225,222,.08) 48%, rgba(220,225,222,0) 76%)';
     brushCursor.hidden = false;
     return;
+  }
+  if (activeTool === 'erase') {
+    brushCursorTip.dataset.tool = 'marker'; brushCursorTip.dataset.shape = 'round';
+    brushCursorTip.style.background = 'rgba(255,255,255,.14)';
+    brushCursorTip.style.width = `${size}px`; brushCursorTip.style.height = `${size}px`;
+    brushCursorTip.style.transform = 'translate(-50%, -50%)'; brushCursor.hidden = false; return;
   }
   brushCursorTip.dataset.tool = 'marker';
   brushCursorTip.style.background = '';
@@ -198,14 +225,16 @@ function pointerRotationAngle(event: PointerEvent, dial: HTMLButtonElement): num
   return ((aroundDial % 360) + 360) % 360;
 }
 
-function selectTool(tool: 'marker' | 'spray'): void {
+function selectTool(tool: 'marker' | 'spray' | 'erase'): void {
   if (tool === activeTool) return;
+  cancelStraightLine();
   if (isDrawing) finishStroke();
   activeTool = tool;
   canShakeDetector.reset();
   markerPanel.hidden = tool !== 'marker';
   sprayPanel.hidden = tool !== 'spray';
-  toolbar.setAttribute('aria-label', tool === 'marker' ? 'Marker settings' : 'Spray Paint settings');
+  erasePanel.hidden = tool !== 'erase';
+  toolbar.setAttribute('aria-label', tool === 'marker' ? 'Marker settings' : tool === 'spray' ? 'Spray Paint settings' : 'Eraser settings');
   toolSelector.querySelectorAll<HTMLButtonElement>('.tool-tab').forEach((button) => {
     const selected = button.dataset.tool === tool;
     button.classList.toggle('active', selected);
@@ -217,7 +246,7 @@ function selectTool(tool: 'marker' | 'spray'): void {
 
 toolSelector.addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.tool-tab');
-  if (button?.dataset.tool === 'marker' || button?.dataset.tool === 'spray') selectTool(button.dataset.tool);
+  if (button?.dataset.tool === 'marker' || button?.dataset.tool === 'spray' || button?.dataset.tool === 'erase') selectTool(button.dataset.tool);
 });
 
 function setSprayRotation(degrees: number): void {
@@ -379,6 +408,8 @@ function applyNavigation(): void {
     layer.style.width = `${width}px`;
     layer.style.height = `${height}px`;
   }
+  linePreviewCanvas.style.width = `${width}px`;
+  linePreviewCanvas.style.height = `${height}px`;
   const stage = canvasStage;
   stage.style.setProperty('--canvas-pan-x', `${navigation.pan.x}px`);
   stage.style.setProperty('--canvas-pan-y', `${navigation.pan.y}px`);
@@ -402,6 +433,8 @@ function resizeCanvas(): void {
   const displayHeight = CANVAS_HEIGHT * navigation.scale;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   renderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT, dpr, displayWidth, displayHeight);
+  linePreviewCanvas.width = CANVAS_WIDTH; linePreviewCanvas.height = CANVAS_HEIGHT;
+  linePreviewCanvas.style.width = `${displayWidth}px`; linePreviewCanvas.style.height = `${displayHeight}px`;
   for (const layer of [backgroundCanvas, foregroundCanvas]) {
     layer.width = Math.max(1, Math.round(CANVAS_WIDTH * dpr));
     layer.height = Math.max(1, Math.round(CANVAS_HEIGHT * dpr));
@@ -431,12 +464,62 @@ function startStroke(event: PointerEvent, initialEvent = event): void {
   activePointerPoint = { x: initialEvent.clientX, y: initialEvent.clientY };
   const point = pointerPosition(initialEvent, canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
   if (strokeTool === 'marker') brush.begin(point, initialEvent.timeStamp, settings.size, settings.color, settings.smoothing, settings.wetness, settings.shape, settings.material, settings.rotationDegrees, settings.splatterEnabled);
+  else if (strokeTool === 'erase') brush.begin(point, initialEvent.timeStamp, eraserSettings.size, '#ffffff', settings.smoothing, 0, 'round', 'paint', 0, false, 240);
   else {
     spraySettings.size = clampSpraySize(spraySettings.size);
     spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees);
     audio.startSpray();
   }
-  holdTimer = window.setInterval(() => { if (isDrawing && strokeTool === 'marker') brush.hold(); }, 60);
+  holdTimer = window.setInterval(() => { if (isDrawing && (strokeTool === 'marker' || strokeTool === 'erase')) brush.hold(); }, 60);
+}
+function cancelStraightLine(): void {
+  lineAnchor = null; lineTool = null;
+  linePreviewContext.clearRect(0, 0, linePreviewCanvas.width, linePreviewCanvas.height);
+}
+function previewStraightLine(point: Point): void {
+  if (!lineAnchor || !lineTool) return;
+  const context = linePreviewContext;
+  context.clearRect(0, 0, linePreviewCanvas.width, linePreviewCanvas.height);
+  context.lineCap = 'round';
+  if (lineTool === 'spray') {
+    context.fillStyle = settings.color;
+    const distance = Math.hypot(point.x - lineAnchor.x, point.y - lineAnchor.y);
+    const count = Math.max(2, Math.ceil(distance / Math.max(5, spraySettings.size * 0.14)));
+    for (let i = 0; i <= count; i++) {
+      const t = i / count; context.globalAlpha = 0.15 + spraySettings.pressure * 0.22;
+      context.beginPath(); context.arc(lineAnchor.x + (point.x - lineAnchor.x) * t, lineAnchor.y + (point.y - lineAnchor.y) * t, spraySettings.size * 0.18, 0, Math.PI * 2); context.fill();
+    }
+  } else {
+    const erasing = lineTool === 'erase';
+    const material = erasing ? 'paint' : settings.material;
+    context.strokeStyle = erasing ? 'rgba(235,240,236,.45)' : material === 'silver-chrome' ? '#d9e0e4' : material === 'copper-chrome' ? '#c8794d' : material === 'gold-chrome' ? '#d9b954' : settings.color;
+    context.globalAlpha = erasing ? 0.75 : 1;
+    context.lineWidth = erasing ? eraserSettings.size : settings.size;
+    context.beginPath(); context.moveTo(lineAnchor.x, lineAnchor.y); context.lineTo(point.x, point.y); context.stroke();
+  }
+  context.globalAlpha = 1;
+}
+function commitStraightLine(point: Point, time: number): void {
+  if (!lineAnchor || !lineTool) return;
+  const start = lineAnchor; const tool = lineTool; cancelStraightLine(); strokeTool = tool;
+  const started = Math.max(0, time);
+  if (tool === 'marker') {
+    brush.begin(start, started, settings.size, settings.color, settings.smoothing, settings.wetness, settings.shape, settings.material, settings.rotationDegrees, settings.splatterEnabled);
+    brush.move(point, started + 500);
+    const stroke = brush.end();
+    if (stroke) { const operation: PaintOperation = { kind: 'marker', stroke }; operations.push(operation); renderer.commitOperation(operation); }
+  } else if (tool === 'erase') {
+    brush.begin(start, started, eraserSettings.size, '#ffffff', settings.smoothing, 0, 'round', 'paint', 0, false, 240);
+    brush.move(point, started + 500);
+    const stroke = brush.end();
+    if (stroke) { const operation: PaintOperation = { kind: 'erase', stroke }; operations.push(operation); renderer.commitOperation(operation); }
+  } else {
+    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees);
+    audio.startSpray(); spray.move(point, started + 500);
+    const stroke = spray.end(); audio.endSpray();
+    if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); }
+  }
+  strokeTool = null; undoButton.disabled = operations.length === 0; requestNavigatorRender();
 }
 function cancelStroke(): void {
   if (!isDrawing) return;
@@ -445,13 +528,15 @@ function cancelStroke(): void {
   activePointerType = null;
   activePointerPoint = null;
   window.clearInterval(holdTimer);
-  if (strokeTool === 'marker') brush.end();
-  else if (strokeTool === 'spray') { spray.end(); audio.endSpray(); }
+  if (strokeTool === 'marker') { brush.end(); renderer.setActive(null); }
+  else if (strokeTool === 'erase') { brush.end(); renderer.setActiveErase(null); }
+  else if (strokeTool === 'spray') { spray.end(); renderer.setActiveSpray(null); audio.endSpray(); }
   strokeTool = null;
   renderer.setOperations(operations);
   requestNavigatorRender();
 }
 function clearCanvas(): void {
+  cancelStraightLine();
   if (isDrawing) finishStroke();
   operations.length = 0; renderer.clear(); undoButton.disabled = true; requestNavigatorRender();
 }
@@ -503,6 +588,17 @@ canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   canvas.setPointerCapture(event.pointerId);
   touchCandidates.clear();
+  if (lineAnchor && event.pointerType !== 'touch') {
+    const point = pointerPosition(event, canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
+    commitStraightLine(point, event.timeStamp);
+    return;
+  }
+  if (event.shiftKey && event.pointerType !== 'touch') {
+    const point = pointerPosition(event, canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
+    lineAnchor = point; lineTool = activeTool; previewStraightLine(point);
+    return;
+  }
+  if (lineAnchor) cancelStraightLine();
   startStroke(event);
 });
 canvas.addEventListener('pointerenter', (event) => {
@@ -513,8 +609,9 @@ canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('pointermove', (event) => {
   if (event.pointerType === 'mouse') { mousePointerOverCanvas = true; updatePanCursor(); }
   updateBrushCursor(event);
+  if (lineAnchor && !isDrawing) previewStraightLine(pointerPosition(event, canvas, CANVAS_WIDTH, CANVAS_HEIGHT));
   if (isDrawing && event.pointerId === activePointerId) activePointerPoint = { x: event.clientX, y: event.clientY };
-  const canShakeEligible = event.pointerType === 'mouse' && event.buttons === 0 && activeTool === 'spray' && !isDrawing && !spacePanHeld && spacePanPointerId === null && mousePanPointerId === null && navigatorDragPointerId === null && !touchNavigationActive;
+  const canShakeEligible = event.pointerType === 'mouse' && event.buttons === 0 && activeTool === 'spray' && !isDrawing && !lineAnchor && !spacePanHeld && spacePanPointerId === null && mousePanPointerId === null && navigatorDragPointerId === null && !touchNavigationActive;
   if (canShakeEligible) {
     if (canShakeDetector.move(event.clientX, event.clientY, event.timeStamp)) audio.playCanShake();
   } else canShakeDetector.reset();
@@ -554,7 +651,7 @@ canvas.addEventListener('pointermove', (event) => {
   const coalesced = [...(event.getCoalescedEvents?.() ?? [event])].sort((a, b) => a.timeStamp - b.timeStamp);
   for (const sample of coalesced) {
     const point = pointerPosition(sample, canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
-    if (strokeTool === 'marker') brush.move(point, sample.timeStamp);
+    if (strokeTool === 'marker' || strokeTool === 'erase') brush.move(point, sample.timeStamp);
     else if (strokeTool === 'spray') spray.move(point, sample.timeStamp);
   }
   requestNavigatorRender();
@@ -569,7 +666,7 @@ function finishStroke(event?: PointerEvent): void {
   if (event && event.pointerId !== activePointerId) return;
   if (event?.type === 'pointerup') {
     const point = pointerPosition(event, canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
-    if (strokeTool === 'marker') brush.move(point, event.timeStamp);
+    if (strokeTool === 'marker' || strokeTool === 'erase') brush.move(point, event.timeStamp);
     else if (strokeTool === 'spray') spray.move(point, event.timeStamp);
   }
   isDrawing = false;
@@ -577,9 +674,9 @@ function finishStroke(event?: PointerEvent): void {
   activePointerType = null;
   activePointerPoint = null;
   window.clearInterval(holdTimer);
-  if (strokeTool === 'marker') {
+  if (strokeTool === 'marker' || strokeTool === 'erase') {
     const stroke = brush.end();
-    if (stroke) { const operation: PaintOperation = { kind: 'marker', stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
+    if (stroke) { const operation: PaintOperation = { kind: strokeTool, stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
   } else if (strokeTool === 'spray') {
     const stroke = spray.end();
     audio.endSpray();
@@ -670,6 +767,7 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (helpDialog.open || isTyping) return;
+  if (event.key === 'Escape' && lineAnchor) { cancelStraightLine(); event.preventDefault(); return; }
   if (event.key === 'Escape' && appShell.classList.contains('canvas-only')) { void exitCanvasOnly(); return; }
   if (event.key === 'Delete' && !event.repeat && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
     event.preventDefault();
@@ -689,11 +787,13 @@ document.addEventListener('keyup', (event) => {
   if (wasSpacePanHeld) event.preventDefault();
 }, true);
 window.addEventListener('blur', () => {
+  cancelStraightLine();
   resetPanInteraction();
   canShakeDetector.reset();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    cancelStraightLine();
     resetPanInteraction();
     canShakeDetector.reset();
   }
@@ -794,6 +894,11 @@ spraySizeInput.addEventListener('input', () => {
   spraySettings.size = clampSpraySize(Number(spraySizeInput.value));
   spraySizeInput.value = String(spraySettings.size);
   document.querySelector('#spray-size-value')!.textContent = `${spraySettings.size} px`;
+  if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
+});
+eraserSizeInput.addEventListener('input', () => {
+  eraserSettings.size = Number(eraserSizeInput.value);
+  document.querySelector('#eraser-size-value')!.textContent = `${eraserSettings.size} px`;
   if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
 });
 sprayPressureInput.addEventListener('input', () => {
@@ -967,23 +1072,34 @@ function renderSurfaceOptions(): void {
   const options: Array<{ id: string; name: string; thumb: string }> = [
     { id: 'solid', name: 'Solid', thumb: 'surface-thumb-solid' },
     { id: 'steel-gate', name: 'Steel Gate', thumb: 'surface-thumb-steel' },
-    ...getCustomSurfaces().map(({ id, name }) => ({ id, name, thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : 'surface-thumb-custom' })),
+    ...getCustomSurfaces().map(({ id, name }) => ({ id, name, thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : 'surface-thumb-custom' })),
   ];
   for (const option of options) {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'surface-option'; button.dataset.surface = option.id;
-    const thumb = option.id === 'norrtag' || option.id === 'citypark' ? document.createElement('img') : document.createElement('span');
+    const thumb = option.id === 'citypark' || option.id === 'storefront' || option.id === 'industrial' ? document.createElement('img') : document.createElement('span');
     thumb.className = `surface-thumb ${option.thumb}`;
     thumb.setAttribute('aria-hidden', 'true');
-    if (thumb instanceof HTMLImageElement) { thumb.src = '/surfaces/norrtag/norrtag_v3.png'; thumb.alt = ''; thumb.draggable = false; }
     if (thumb instanceof HTMLImageElement && option.id === 'citypark') thumb.src = '/surfaces/citypark-thumbnail.png';
+    if (thumb instanceof HTMLImageElement && option.id === 'storefront') thumb.src = '/surfaces/storefront-thumbnail.png';
+    if (thumb instanceof HTMLImageElement && option.id === 'industrial') thumb.src = '/surfaces/industrial-thumbnail.png';
     const label = document.createElement('span'); label.textContent = option.name;
     button.append(thumb, label);
     surfacePicker.append(button);
   }
-  updateSurface();
 }
-function updateSurface(): void {
+async function updateSurface(requestedSurface: CanvasSurface = activeSurface): Promise<void> {
+  cancelStraightLine();
+  const request = ++surfaceRequest;
+  pendingSurface = requestedSurface;
+  loadingIndicator.hidden = false; loadingRetry.hidden = true;
+  loadingTask.textContent = requestedSurface === 'solid' ? 'Preparing canvas' : 'Loading surface artwork and paint mask';
+  try {
+  await ensureSurfaceLoaded(requestedSurface);
+  if (request !== surfaceRequest) return;
+  if (requestedSurface !== activeSurface) clearCanvas();
+  activeSurface = requestedSurface;
+  loadingTask.textContent = 'Preparing canvas and aligning paint mask';
   const dimensions = getSurfaceDimensions(activeSurface);
   if (dimensions.width !== CANVAS_WIDTH || dimensions.height !== CANVAS_HEIGHT) {
     CANVAS_WIDTH = dimensions.width;
@@ -995,6 +1111,7 @@ function updateSurface(): void {
   canvas.parentElement!.classList.toggle('surface-norrtag', activeSurface === 'norrtag');
   canvas.parentElement!.classList.toggle('surface-citypark', activeSurface === 'citypark');
   navigation.setBounds(getSurfaceNavigationBounds(activeSurface));
+  navigation.fitToView(canvasStage.clientWidth, canvasStage.clientHeight);
   audio.setSurfaceAmbience(getSurfaceAmbience(activeSurface));
   surfacePicker.querySelectorAll<HTMLButtonElement>('.surface-option').forEach((button) => {
     const selected = button.dataset.surface === activeSurface;
@@ -1008,23 +1125,33 @@ function updateSurface(): void {
   drawForeground(fg, activeSurface);
   renderer.setRunoffObstacles(getSurfaceObstacles(activeSurface));
   renderer.setPaintMask(getSurfacePaintMask(activeSurface));
+  renderer.setSurfaceAoMap(getSurfaceAoMap(activeSurface), activeSurface);
   applyNavigation();
   try { localStorage.setItem(surfaceKey, activeSurface); } catch { /* Keep surface changes usable when storage is unavailable. */ }
+  pendingSurface = null;
+  loadingIndicator.hidden = true;
+  } catch (error) {
+    if (request !== surfaceRequest) return;
+    pendingSurface = requestedSurface;
+    loadingTask.textContent = `Could not load surface: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    loadingRetry.hidden = false;
+  }
 }
 surfacePicker.addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.surface-option');
   if (!button?.dataset.surface) return;
-  if (button.dataset.surface === activeSurface) return;
-  clearCanvas();
-  activeSurface = button.dataset.surface;
-  updateSurface();
+  if (button.dataset.surface === activeSurface && pendingSurface === null) return;
+  if (button.dataset.surface === pendingSurface) return;
+  void updateSurface(button.dataset.surface);
 });
-window.addEventListener('tagbox-surface-assets-ready', updateSurface);
-window.addEventListener('tagbox-custom-surfaces-ready', () => {
+loadingRetry.addEventListener('click', () => { void updateSurface(pendingSurface ?? activeSurface); });
+void (async () => {
+  loadingTask.textContent = 'Loading surface configuration';
+  await surfaceManifestPromise;
   if (activeSurface !== 'solid' && activeSurface !== 'steel-gate' && !getCustomSurfaces().some(({ id }) => id === activeSurface)) activeSurface = 'solid';
   renderSurfaceOptions();
-});
-renderSurfaceOptions();
+  await updateSurface(activeSurface);
+})();
 backgroundInput.addEventListener('input', () => setBackgroundColor(backgroundInput.value));
 
 document.querySelector<HTMLButtonElement>('#export-button')!.addEventListener('click', () => {

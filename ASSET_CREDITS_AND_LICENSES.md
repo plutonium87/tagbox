@@ -24,6 +24,7 @@ This document tracks third-party assets used in Tagbox. Paths below are relative
 ### Night City Side Street
 
 - **Local file:** `public/audio/ambience/jadeallencook-night-city-side-street-with-passing-cars-and-distant-urban-ambience-339223.mp3`
+- **Used by:** Store front surface & Steel gate surface
 - **Logical audio identifier:** `urban`
 - **Original title:** Night City Side Street with Passing Cars and Distant Urban Ambience
 - **Creator:** jadeallencook
@@ -58,6 +59,19 @@ This document tracks third-party assets used in Tagbox. Paths below are relative
 - **License:** Pixabay Content License
 - **Download date:** 2026-11-11
 - **Modifications:** The playback file was edited from the retained original source recording; voices were removed.
+- **Attribution required:** No
+
+### Industrial
+
+- **Edited playback file:** `public/audio/ambience/industrial_humming.mp3`, used by the Industrial surface (`public/surfaces/industrial/surface.json`).
+- **Retained original source recording (not used for playback):** `public/audio/ambience/freesound_community-ambient-industrial-ventilation-soundscape-17132.mp3`
+- **Original title:** freesound_community-ambient-industrial-ventilation-soundscape-17132
+- **Creator:** freesound_community
+- **Source:** https://pixabay.com/sound-effects/city-ambient-industrial-ventilation-soundscape-17132/
+- **Source platform:** Pixabay
+- **License:** Pixabay Content License
+- **Download date:** 2026-11-13
+- **Modifications:** The playback file was edited from the retained original source recording; a shorter file for looping was created.
 - **Attribution required:** No
 
 ### Audio files needing documentation

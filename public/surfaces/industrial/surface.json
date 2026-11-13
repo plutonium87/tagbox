@@ -1,0 +1,12 @@
+{
+  "id": "industrial",
+  "name": "Industrial",
+  "width": 3240,
+  "height": 1080,
+  "background": "industrial_3240x1080.png",
+  "paintMask": "industrial_paintmask_3240x1080.png",
+  "aoMap": "industrial_AO_3240x1080.png",
+  "paintMaskMode": "grayscale",
+  "fit": "stretch",
+  "ambience": "/audio/ambience/industrial_humming.mp3"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "storefront",
+  "name": "Store front",
+  "width": 1920,
+  "height": 1080,
+  "background": "storefront_1920x1080.png",
+  "paintMask": "storefront_paintmask_1920x1080.png",
+  "paintMaskMode": "grayscale",
+  "fit": "stretch",
+  "ambience": "/audio/ambience/jadeallencook-night-city-side-street-with-passing-cars-and-distant-urban-ambience-339223.mp3"
+}

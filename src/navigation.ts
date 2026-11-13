@@ -18,7 +18,22 @@ export class CanvasNavigation {
 
   get scale(): number { return this.baseScale * this.zoom; }
   get minZoom(): number {
-    return this.viewport.width / (this.logical.width * this.baseScale);
+    return Math.min(
+      this.viewport.width / this.logical.width,
+      this.viewport.height / this.logical.height,
+    ) / this.baseScale;
+  }
+
+  fitToView(width: number, height: number): void {
+    this.viewport.width = Math.max(1, width);
+    this.viewport.height = Math.max(1, height);
+    this.baseScale = Math.max(Number.EPSILON, Math.min(
+      this.viewport.width / this.logical.width,
+      this.viewport.height / this.logical.height,
+    ));
+    this.zoom = 1;
+    this.pan.x = 0;
+    this.pan.y = 0;
   }
 
   resize(width: number, height: number, baseScale: number): void {

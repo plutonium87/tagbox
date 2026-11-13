@@ -2,7 +2,7 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.0.0**.
+Project version: **1.0.1**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
@@ -12,11 +12,12 @@ Project version: **1.0.0**.
 - Spray with Standard and Calligraphy nozzles. Calligraphy has a matching graphical rotation dial; Standard is rotationally symmetric.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
-- Four selectable surfaces: Solid, Steel Gate, Norrtåg and City park. Additional custom surfaces can be registered through the surface manifest.
-- Surface-native logical dimensions: Solid and Steel Gate use 1920×1080; Norrtåg and City park use their configured 3240×1080 dimensions.
-- Steel Gate uses photographic background and detail layers. Norrtåg and City park use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha.
+- Selectable surfaces include Solid, Steel Gate, Norrtåg, City Park, Store front and Industrial. Custom surfaces can be registered through the surface manifest.
+- Surface-native logical dimensions: Solid, Steel Gate and Store front use 1920×1080; Norrtåg, City Park and Industrial use their configured 3240×1080 dimensions.
+- Steel Gate uses photographic background and detail layers. Norrtåg and City Park use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
 - Navigator thumbnail and viewport tracking, zoom and pan.
-- Undo, clear-canvas, Fullscreen and timestamped native-dimension PNG export.
+- Independent Marker, Spray and Erase tools, Undo, Shift-click straight lines, clear-canvas, Fullscreen and timestamped native-dimension PNG export.
+- Lazy surface loading with loading feedback and an initial fit-to-view viewport.
 - Audio ambience and effects with master mute, separate Master, Ambience and Effects volume controls, and saved browser preferences.
 
 ## Controls
@@ -44,7 +45,7 @@ Select a custom color, one of the 16 preset colors or a saved color. Selecting a
 ### Audio
 
 - Spray effects: start, continuous loop and end; can-shake detection; cap-change sounds for Marker tip and Spray nozzle selection; and can-color sounds for color and Chrome selection.
-- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Steel Gate uses Urban ambience, and City park uses park ambience. Solid is silent.
+- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Steel Gate and Store front use Urban ambience, City Park uses park ambience, and Industrial uses industrial ambience. Solid is silent.
 - The top sound button or settings-panel Sound control mutes or enables audio. Master, Ambience and Effects volumes are adjustable independently. These preferences are saved in this browser.
 - Can-shake detection is limited to desktop mouse movement with Spray selected while not drawing.
 
@@ -72,11 +73,11 @@ Fullscreen expands the canvas workspace while keeping its available actions, inc
 
 ## Surfaces and export
 
-Solid and Steel Gate use 1920×1080. Norrtåg and City park are registered through the surface manifest at their configured 3240×1080 dimensions. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, foreground artwork follows each surface's configured layer order, and paint masks restrict Marker, Spray and runoff deposition to paintable areas.
+Solid, Steel Gate and Store front use 1920×1080. Norrtåg, City Park and Industrial are registered through the surface manifest at their configured dimensions. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, foreground artwork follows each surface's configured layer order, and paint masks restrict Marker, Spray and runoff deposition to paintable areas.
 
-The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. Background, foreground and paint-mask images are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground. See [Custom surface assets](public/surfaces/README.md).
+The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's artwork, paint mask, optional AO map and ambience when selected, then keeps a small cache of recently used surfaces. Background, foreground, paint-mask and AO-map paths are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground. See [Custom surface assets](public/surfaces/README.md).
 
-Export PNG downloads the active logical canvas at its configured dimensions: 1920×1080 for Solid and Steel Gate, and 3240×1080 for Norrtåg and City park. Filenames include a local timestamp.
+Export PNG downloads the active logical canvas at its configured dimensions. Filenames include a local timestamp.
 
 ## Development
 

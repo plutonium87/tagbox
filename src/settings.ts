@@ -8,7 +8,7 @@ export interface SecondarySplatterRunoff extends Point { width: number; length: 
 export interface SplatterParticle extends Point { originX: number; originY: number; vx: number; vy: number; radius: number; aspect: number; age: number; lifetime: number; gravity: number; secondaryRunoff?: SecondarySplatterRunoff }
 export interface Stroke { points: Point[]; dabs: Dab[]; splatter?: SplatterParticle[]; splatterEnabled?: boolean; size: number; color: string; material: Material; shape: BrushShape; rotation: number }
 export interface SprayStroke { kind: 'spray'; points: Point[]; particles: Float32Array; size: number; color: string; pressure: number; material: Material; nozzle: SprayNozzle; rotation: number }
-export type PaintOperation = { kind: 'marker'; stroke: Stroke } | { kind: 'spray'; stroke: SprayStroke };
+export type PaintOperation = { kind: 'marker'; stroke: Stroke } | { kind: 'spray'; stroke: SprayStroke } | { kind: 'erase'; stroke: Stroke };
 
 export const CANVAS_WIDTH = 1920;
 export const CANVAS_HEIGHT = 1080;
@@ -26,3 +26,4 @@ export function clampSpraySize(size: number): number {
 
 export const settings: BrushSettings & { shape: BrushShape; rotationDegrees: number; splatterEnabled: boolean } = { size: 10, color: '#ffffff', material: 'paint', smoothing: 0.5, wetness: 0.68, intensity: 0.58, shape: 'round', rotationDegrees: 0, splatterEnabled: true };
 export const spraySettings = { size: 96, pressure: 0.55, smoothing: 0.45, material: 'paint' as Material, nozzle: 'standard' as SprayNozzle, rotationDegrees: 0 };
+export const eraserSettings = { size: 28 };

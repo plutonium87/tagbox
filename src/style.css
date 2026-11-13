@@ -64,6 +64,11 @@
 .surface-thumb-custom{background:linear-gradient(135deg,#4b4c46 25%,#6b6254 25% 50%,#4b4c46 50% 75%,#6b6254 75%);background-size:10px 10px}
 .surface-thumb-norrtag{object-fit:cover;object-position:86% 53%;background-color:#151718}
 .surface-thumb-citypark{object-fit:cover;object-position:center;background-color:#151718}
+.surface-thumb-storefront{object-fit:cover;object-position:center;background-color:#151718}
+.surface-thumb-industrial{object-fit:cover;object-position:center;background-color:#151718}
 .rotation-tip-preview[data-shape="calligraphy"]{width:27px;height:5px;border-radius:50%}
 .background-layer{left:calc(50% + var(--background-pan-x,0px));top:calc(50% + var(--background-pan-y,0px))}
 .canvas-stage.surface-norrtag .foreground-layer,.canvas-stage.surface-citypark .foreground-layer{z-index:0}
+.loading-indicator{position:absolute;z-index:10;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;background:rgba(9,10,11,.92);color:#c9ceca;font:11px var(--mono);letter-spacing:.04em}.loading-indicator[hidden]{display:none}.loading-spinner{width:16px;height:16px;border:1px solid #575c5a;border-top-color:#f0f2ed;border-radius:50%;animation:tagbox-spin .8s linear infinite}@keyframes tagbox-spin{to{transform:rotate(360deg)}}#loading-retry{border:1px solid #454949;background:#17191a;color:#eee;padding:6px 10px;font:inherit;cursor:pointer}
+.line-preview-canvas{position:absolute;z-index:4;left:calc(50% + var(--canvas-pan-x,0px));top:calc(50% + var(--canvas-pan-y,0px));transform:translate(-50%,-50%);pointer-events:none}.brush-cursor-preview{z-index:5}
+.tool-selector{grid-template-columns:repeat(3,minmax(0,1fr))}.surface-thumb-norrtag{background:linear-gradient(90deg,#4b4140,#b6b4ad 18%,#272d32 35%,#81827d 56%,#1f252a 74%,#68635e);}

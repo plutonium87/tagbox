@@ -10,6 +10,7 @@ export interface CustomSurfaceDefinition {
   background: string;
   foreground?: string;
   paintMask?: string;
+  aoMap?: string;
   paintMaskMode?: 'grayscale' | 'alpha';
   paintMaskAlphaSource?: 'foreground';
   fit?: 'contain' | 'cover' | 'stretch';
@@ -21,20 +22,29 @@ export interface CustomSurfaceDefinition {
 export interface SurfaceDimensions { width: number; height: number }
 interface LogicalBounds { x: number; y: number; width: number; height: number }
 interface BuiltPaintMask { canvas: HTMLCanvasElement; bounds: LogicalBounds | null }
-interface LoadedCustomSurface { definition: CustomSurfaceDefinition; background: HTMLImageElement | null; foreground: HTMLImageElement | null; paintMask: HTMLCanvasElement | null; paintBounds: LogicalBounds | null; ambience: string | null }
+interface LoadedCustomSurface { definition: CustomSurfaceDefinition; configUrl: string; loaded: boolean; loading?: Promise<void>; background: HTMLImageElement | null; foreground: HTMLImageElement | null; paintMask: HTMLCanvasElement | null; aoMap: HTMLImageElement | null; paintBounds: LogicalBounds | null; ambience: string | null }
 const customSurfaces = new Map<string, LoadedCustomSurface>();
+const surfaceCacheOrder: string[] = [];
 
 function loadOptionalImage(url: string | undefined): Promise<HTMLImageElement | null> {
   if (!url) return Promise.resolve(null);
   return new Promise((resolve) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.onload = () => { void image.decode().then(() => resolve(image), () => resolve(null)); };
     image.onerror = () => resolve(null);
     image.src = url;
   });
 }
+function loadRequiredImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () => reject(new Error(`Could not load ${new URL(url).pathname.split('/').at(-1) ?? 'surface image'}.`));
+    image.onload = () => { void image.decode().then(() => resolve(image), () => reject(new Error(`Could not decode ${new URL(url).pathname.split('/').at(-1) ?? 'surface image'}.`))); };
+    image.src = url;
+  });
+}
 
-async function loadCustomSurface(id: string): Promise<void> {
+async function registerCustomSurface(id: string): Promise<void> {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || id === 'solid' || id === 'steel-gate') return;
   try {
     const configUrl = `/surfaces/${id}/surface.json`;
@@ -43,19 +53,53 @@ async function loadCustomSurface(id: string): Promise<void> {
     const definition = await response.json() as CustomSurfaceDefinition;
     if (definition.id !== id || !definition.name || !Number.isFinite(definition.width) || definition.width < 1 || !Number.isFinite(definition.height) || definition.height < 1 || typeof definition.background !== 'string') return;
     const assetUrl = (path?: string): string | undefined => path ? new URL(path, new URL(configUrl, window.location.href)).href : undefined;
-    const [background, foreground, paintMask] = await Promise.all([
-      loadOptionalImage(assetUrl(definition.background)),
-      loadOptionalImage(assetUrl(definition.foreground)),
-      loadOptionalImage(assetUrl(definition.paintMask)),
+    customSurfaces.set(id, { definition, configUrl, loaded: false, background: null, foreground: null, paintMask: null, aoMap: null, paintBounds: null, ambience: assetUrl(definition.ambience) ?? null });
+  } catch {
+    // An invalid or unavailable custom entry is skipped; the rest of the app remains usable.
+  }
+}
+
+export async function ensureSurfaceLoaded(id: string): Promise<void> {
+  if (id === 'solid') { touchSurfaceCache(id); return; }
+  if (id === 'steel-gate') { await ensureGateLoaded(); touchSurfaceCache(id); return; }
+  const custom = customSurfaces.get(id);
+  if (!custom || custom.loaded) {
+    if (custom?.loaded) touchSurfaceCache(id);
+    return;
+  }
+  if (custom.loading) return custom.loading;
+  custom.loading = (async () => {
+    const assetUrl = (path?: string): string | undefined => path ? new URL(path, new URL(custom.configUrl, window.location.href)).href : undefined;
+    const backgroundUrl = assetUrl(custom.definition.background)!;
+    const maskUrl = assetUrl(custom.definition.paintMask);
+    const [background, foreground, paintMask, aoMap] = await Promise.all([
+      loadRequiredImage(backgroundUrl),
+      loadOptionalImage(assetUrl(custom.definition.foreground)),
+      maskUrl ? loadRequiredImage(maskUrl) : Promise.resolve(null),
+      loadOptionalImage(assetUrl(custom.definition.aoMap)),
     ]);
     const alignedMask = paintMask ? buildLogicalPaintMask(
       paintMask,
-      definition,
-      definition.paintMaskAlphaSource === 'foreground' ? foreground : null,
+      custom.definition,
+      custom.definition.paintMaskAlphaSource === 'foreground' ? foreground : null,
     ) : null;
-    customSurfaces.set(id, { definition, background, foreground, paintMask: alignedMask?.canvas ?? null, paintBounds: alignedMask?.bounds ?? null, ambience: assetUrl(definition.ambience) ?? null });
-  } catch {
-    // An invalid or unavailable custom entry is skipped; the rest of the app remains usable.
+    custom.background = background; custom.foreground = foreground;
+    custom.paintMask = alignedMask?.canvas ?? null; custom.paintBounds = alignedMask?.bounds ?? null; custom.loaded = true;
+    custom.aoMap = aoMap;
+    touchSurfaceCache(id);
+  })().finally(() => { custom.loading = undefined; });
+  return custom.loading;
+}
+
+function touchSurfaceCache(id: string): void {
+  const previous = surfaceCacheOrder.indexOf(id);
+  if (previous >= 0) surfaceCacheOrder.splice(previous, 1);
+  surfaceCacheOrder.push(id);
+  while (surfaceCacheOrder.length > 2) {
+    const evictedId = surfaceCacheOrder.shift()!;
+    const evicted = customSurfaces.get(evictedId);
+    if (evicted) { evicted.loaded = false; evicted.background = null; evicted.foreground = null; evicted.paintMask = null; evicted.aoMap = null; evicted.paintBounds = null; }
+    if (evictedId === 'steel-gate') releaseGateSurface();
   }
 }
 
@@ -128,13 +172,14 @@ export async function loadSurfaceManifest(): Promise<void> {
     const response = await fetch('/surfaces/manifest.json', { cache: 'no-cache' });
     if (response.ok) {
       const manifest = await response.json() as { surfaces?: unknown };
-      if (Array.isArray(manifest.surfaces)) await Promise.all(manifest.surfaces.filter((id): id is string => typeof id === 'string').map(loadCustomSurface));
+      if (Array.isArray(manifest.surfaces)) await Promise.all(manifest.surfaces.filter((id): id is string => typeof id === 'string').map(registerCustomSurface));
     }
   } catch {
     // Built-in surfaces remain available if the optional manifest cannot be loaded.
   }
   window.dispatchEvent(new Event('tagbox-custom-surfaces-ready'));
 }
+export const surfaceManifestPromise = loadSurfaceManifest();
 
 export function getCustomSurfaces(): CustomSurfaceDefinition[] {
   return [...customSurfaces.values()].map(({ definition }) => definition);
@@ -147,6 +192,10 @@ export function getSurfaceDimensions(surface: CanvasSurface): SurfaceDimensions 
 
 export function getSurfacePaintMask(surface: CanvasSurface): HTMLCanvasElement | null {
   return customSurfaces.get(surface)?.paintMask ?? null;
+}
+
+export function getSurfaceAoMap(surface: CanvasSurface): HTMLImageElement | null {
+  return customSurfaces.get(surface)?.aoMap ?? null;
 }
 
 export function getSurfaceNavigationBounds(surface: CanvasSurface): LogicalBounds | null {
@@ -172,21 +221,38 @@ let gateForegroundPlate: HTMLCanvasElement | null = null;
 let gateBackdropReady = false;
 let gateReady = false;
 let gateDetailsReady = false;
-gateBackdropPhoto.onload = () => { gateBackdropReady = true; window.dispatchEvent(new Event('tagbox-surface-assets-ready')); };
+let gateLoadPromise: Promise<void> | null = null;
+gateBackdropPhoto.onload = () => { gateBackdropReady = true; };
 gatePhoto.onload = () => {
   gateReady = true;
   gatePlate = buildGatePlate();
   if (gateDetailsReady) gateForegroundPlate = buildGateForegroundPlate();
-  window.dispatchEvent(new Event('tagbox-surface-assets-ready'));
 };
 gateDetailsPhoto.onload = () => {
   gateDetailsReady = true;
   if (gateReady) gateForegroundPlate = buildGateForegroundPlate();
-  window.dispatchEvent(new Event('tagbox-surface-assets-ready'));
 };
-gateBackdropPhoto.src = '/concrete-photo-background.png';
-gatePhoto.src = '/steel-gate-photo-background.png';
-gateDetailsPhoto.src = '/steel-gate-photo-details.png';
+function ensureGateLoaded(): Promise<void> {
+  if (gateLoadPromise) return gateLoadPromise;
+  gateLoadPromise = new Promise<void>((resolve) => {
+    let remaining = 3;
+    const complete = (): void => { if (--remaining === 0) resolve(); };
+    for (const [image, src] of [[gateBackdropPhoto, '/concrete-photo-background.png'], [gatePhoto, '/steel-gate-photo-background.png'], [gateDetailsPhoto, '/steel-gate-photo-details.png']] as const) {
+      image.addEventListener('load', complete, { once: true });
+      image.addEventListener('error', complete, { once: true });
+      image.src = src;
+    }
+  }).then(async () => {
+    await Promise.all([gateBackdropPhoto, gatePhoto, gateDetailsPhoto].map((image) => image.decode().catch(() => undefined)));
+  });
+  return gateLoadPromise;
+}
+
+function releaseGateSurface(): void {
+  gateLoadPromise = null; gateBackdropReady = false; gateReady = false; gateDetailsReady = false;
+  gatePlate = null; gateForegroundPlate = null;
+  gateBackdropPhoto.removeAttribute('src'); gatePhoto.removeAttribute('src'); gateDetailsPhoto.removeAttribute('src');
+}
 
 const gatePhysicalRects = [
   { left: 108, top: 12, right: 1561, bottom: 45 },       // top rail
@@ -324,5 +390,3 @@ export function getSurfaceObstacles(surface: CanvasSurface): RunoffObstacle[] {
   }
   return [];
 }
-
-void loadSurfaceManifest();

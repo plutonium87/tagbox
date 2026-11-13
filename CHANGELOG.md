@@ -2,6 +2,18 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.0.1] - 2026-11-13
+
+### Added
+
+- Added Store front and Industrial surfaces with thumbnails, paint masks and surface-specific ambience; Industrial paint also uses its aligned AO map for subtle shading.
+- Added a dedicated Erase tool, independent eraser sizing, and Shift-click straight lines for Marker, Spray and Erase.
+- Added lazy surface loading, loading feedback and consistent fit-to-view initial navigation.
+
+### Changed
+
+- Improved canvas rendering, surface navigation and application loading performance while retaining the existing paint, Chrome, mask, export and audio workflows.
+
 ## [1.0.0] - 2026-11-11
 
 ### Added

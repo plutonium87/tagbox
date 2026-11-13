@@ -1,5 +1,5 @@
 import { RunoffEngine, type RunoffObstacle } from '../src/runoff';
-import { getSurfaceObstacles } from '../src/surfaces';
+import { ensureSurfaceLoaded, getSurfaceObstacles } from '../src/surfaces';
 import type { Dab, Stroke } from '../src/settings';
 
 const result = document.querySelector<HTMLElement>('#result')!;
@@ -25,6 +25,7 @@ function maxRunoffY(engine: RunoffEngine, stroke: Stroke, inside?: RunoffObstacl
 }
 
 try {
+  await ensureSurfaceLoaded('steel-gate');
   await new Promise<void>((resolve) => {
     const poll = (): void => {
       if (getSurfaceObstacles('steel-gate').length) resolve();
