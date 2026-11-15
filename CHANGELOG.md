@@ -2,6 +2,13 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.1.0] - 2026-11-15
+
+### Added
+
+- Reworked Spider into two continuous, independently progressing filaments in a bounded, rotation-local rectangular footprint, with deterministic time-based deposition that continues while stationary.
+- Added persistent Spider Weave Speed control from 5× to 50×, defaulting to 20×, with frequency-scaled geometry subdivision for continuous strokes.
+
 ## [1.0.2] - 2026-11-15
 
 ### Added

@@ -2,14 +2,14 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.0.2**.
+Project version: **1.1.0**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
 ## Features
 
 - Marker with Round, Square, Chisel and Split Chisel tips. Non-round tips can be rotated with the graphical dial by dragging it or using its keyboard controls.
-- Spray with Standard, Calligraphy and Spider nozzles. Calligraphy and Spider share the graphical 0°–360° nozzle rotation dial; Spider lays down directional paint filaments.
+- Spray with Standard, Calligraphy and Spider nozzles. Calligraphy and Spider share the graphical 0°–360° nozzle rotation dial; Spider lays down two continuous, independently weaving filaments in a rectangular footprint, including while stationary.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
 - Selectable surfaces include Solid, Steel Gate, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
@@ -35,13 +35,14 @@ Project version: **1.0.2**.
 ### Spray
 
 - Spray Size: 3–240 px (default 96 px).
-- Standard, Calligraphy and Spider nozzles. Calligraphy uses a narrow oval spray. Spider creates a directional bundle of fine paint filaments. Both support 0°–360° rotation using the graphical dial.
+- Standard, Calligraphy and Spider nozzles. Calligraphy uses a narrow oval spray. Spider lays two continuous, independently weaving filaments in a rectangular footprint. Both support 0°–360° rotation using the graphical dial.
+- Spider Weave Speed: 5×–50× (default 20×), saved in this browser and applied to new strokes.
 - Smoothing: 0%–100% (default 45%); Pressure: 0%–100% (default 55%).
 - Paint and all three Chrome materials are available.
 
 ### Colors and materials
 
-Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. The active tool, sizes, tip/nozzle selections, rotations and other live adjustment controls return to their defaults on reload.
+Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, Spider Weave Speed, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. The active tool, sizes, tip/nozzle selections, rotations and other live adjustment controls return to their defaults on reload.
 
 ### Audio
 

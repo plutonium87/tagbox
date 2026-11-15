@@ -6,7 +6,7 @@ import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
 import { pointerPosition, CanvasRenderer } from './renderer';
 import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface } from './surfaces';
-import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
+import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveSpeed, restoreSpiderWeaveSpeed, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
 const runoffCanvas = document.querySelector<HTMLCanvasElement>('#runoff-canvas')!;
@@ -39,6 +39,9 @@ const spraySizeInput = document.querySelector<HTMLInputElement>('#spray-size')!;
 const eraserSizeInput = document.querySelector<HTMLInputElement>('#eraser-size')!;
 const sprayPressureInput = document.querySelector<HTMLInputElement>('#spray-pressure')!;
 const spraySmoothingInput = document.querySelector<HTMLInputElement>('#spray-smoothing')!;
+const spiderWeaveInput = document.querySelector<HTMLInputElement>('#spider-weave-speed')!;
+const spiderWeaveValue = document.querySelector<HTMLOutputElement>('#spider-weave-speed-value')!;
+const spiderWeaveGroup = document.querySelector<HTMLElement>('#spider-weave-group')!;
 const sprayRotationGroup = document.querySelector<HTMLElement>('#spray-rotation-group')!;
 const sprayRotationDial = document.querySelector<HTMLButtonElement>('#spray-rotation-dial')!;
 const sprayRotationTip = sprayRotationDial.querySelector<HTMLElement>('.rotation-tip-preview')!;
@@ -120,6 +123,7 @@ let strokeTool: 'marker' | 'spray' | 'erase' | null = null;
 const shapeRotations: Record<'square' | 'chisel' | 'split-chisel', number> = { square: 0, chisel: 140, 'split-chisel': 140 };
 let isDrawing = false;
 let holdTimer = 0;
+let spiderTimer = 0;
 let activePointerId: number | null = null;
 let activePointerType: string | null = null;
 let activePointerPoint: Point | null = null;
@@ -467,7 +471,8 @@ function startStroke(event: PointerEvent, initialEvent = event): void {
   else if (strokeTool === 'erase') brush.begin(point, initialEvent.timeStamp, eraserSettings.size, '#ffffff', settings.smoothing, 0, 'round', 'paint', 0, false, 240);
   else {
     spraySettings.size = clampSpraySize(spraySettings.size);
-    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees);
+    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveSpeed);
+    if (spraySettings.nozzle === 'spider') spiderTimer = window.setInterval(() => spray.tick(performance.now()), 16);
     audio.startSpray();
   }
   holdTimer = window.setInterval(() => { if (isDrawing && (strokeTool === 'marker' || strokeTool === 'erase')) brush.hold(); }, 60);
@@ -514,9 +519,9 @@ function commitStraightLine(point: Point, time: number): void {
     const stroke = brush.end();
     if (stroke) { const operation: PaintOperation = { kind: 'erase', stroke }; operations.push(operation); renderer.commitOperation(operation); }
   } else {
-    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees);
+    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveSpeed);
     audio.startSpray(); spray.move(point, started + 500);
-    const stroke = spray.end(); audio.endSpray();
+    const stroke = spray.end(started + 500); audio.endSpray();
     if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); }
   }
   strokeTool = null; undoButton.disabled = operations.length === 0; requestNavigatorRender();
@@ -530,7 +535,8 @@ function cancelStroke(): void {
   window.clearInterval(holdTimer);
   if (strokeTool === 'marker') { brush.end(); renderer.setActive(null); }
   else if (strokeTool === 'erase') { brush.end(); renderer.setActiveErase(null); }
-  else if (strokeTool === 'spray') { spray.end(); renderer.setActiveSpray(null); audio.endSpray(); }
+  else if (strokeTool === 'spray') { spray.end(performance.now()); renderer.setActiveSpray(null); audio.endSpray(); }
+  window.clearInterval(spiderTimer); spiderTimer = 0;
   strokeTool = null;
   renderer.setOperations(operations);
   requestNavigatorRender();
@@ -674,11 +680,13 @@ function finishStroke(event?: PointerEvent): void {
   activePointerType = null;
   activePointerPoint = null;
   window.clearInterval(holdTimer);
+  window.clearInterval(spiderTimer); spiderTimer = 0;
   if (strokeTool === 'marker' || strokeTool === 'erase') {
     const stroke = brush.end();
     if (stroke) { const operation: PaintOperation = { kind: strokeTool, stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
   } else if (strokeTool === 'spray') {
-    const stroke = spray.end();
+    window.clearInterval(spiderTimer); spiderTimer = 0;
+    const stroke = spray.end(event?.timeStamp ?? performance.now());
     audio.endSpray();
     if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
   }
@@ -909,12 +917,20 @@ spraySmoothingInput.addEventListener('input', () => {
   spraySettings.smoothing = Number(spraySmoothingInput.value) / 100;
   document.querySelector('#spray-smoothing-value')!.textContent = `${spraySmoothingInput.value}%`;
 });
+const spiderWeaveSpeedKey = 'tagbox.spider-weave-speed';
+spiderWeaveInput.addEventListener('input', () => {
+  spraySettings.weaveSpeed = clampSpiderWeaveSpeed(Number(spiderWeaveInput.value));
+  spiderWeaveInput.value = String(spraySettings.weaveSpeed);
+  spiderWeaveValue.textContent = `${spraySettings.weaveSpeed}x`;
+  try { localStorage.setItem(spiderWeaveSpeedKey, String(spraySettings.weaveSpeed)); } catch { /* The current session still uses the selected speed. */ }
+});
 document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((button) => button.addEventListener('click', () => {
   if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy' && button.dataset.nozzle !== 'spider') return;
   const changed = spraySettings.nozzle !== button.dataset.nozzle;
   spraySettings.nozzle = button.dataset.nozzle;
   if (changed) audio.playCapChange();
   sprayRotationGroup.hidden = spraySettings.nozzle !== 'calligraphy' && spraySettings.nozzle !== 'spider';
+  spiderWeaveGroup.hidden = spraySettings.nozzle !== 'spider';
   document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((option) => {
     const selected = option.dataset.nozzle === spraySettings.nozzle;
     option.classList.toggle('active', selected);
@@ -1040,6 +1056,13 @@ try {
   const storedMaterial = localStorage.getItem(sprayMaterialKey);
   if (storedMaterial === 'silver-chrome' || storedMaterial === 'copper-chrome' || storedMaterial === 'gold-chrome') spraySettings.material = storedMaterial;
 } catch { /* Use ordinary spray when storage is unavailable. */ }
+try {
+  const storedWeaveSpeed = localStorage.getItem(spiderWeaveSpeedKey);
+  spraySettings.weaveSpeed = restoreSpiderWeaveSpeed(storedWeaveSpeed);
+  if (storedWeaveSpeed !== null && String(spraySettings.weaveSpeed) !== storedWeaveSpeed) localStorage.setItem(spiderWeaveSpeedKey, String(spraySettings.weaveSpeed));
+} catch { /* Use the default weave speed when storage is unavailable. */ }
+spiderWeaveInput.value = String(spraySettings.weaveSpeed);
+spiderWeaveValue.textContent = `${spraySettings.weaveSpeed}x`;
 renderPalettes();
 colorInput.addEventListener('input', () => setColor(colorInput.value, true, true));
 saveColorButton.addEventListener('click', () => {

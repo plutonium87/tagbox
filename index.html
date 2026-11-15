@@ -94,6 +94,11 @@
               </button>
               <div class="range-ends"><span>0°</span><span>360°</span></div>
             </div>
+            <div id="spider-weave-group" class="tool-group" hidden>
+              <div class="control-label"><label for="spider-weave-speed">Weave Speed</label><output id="spider-weave-speed-value">20x</output></div>
+              <input id="spider-weave-speed" class="range-input" type="range" min="5" max="50" step="1" value="20" />
+              <div class="range-ends"><span>5x</span><span>50x</span></div>
+            </div>
             <div class="tool-group">
               <div class="control-label"><label for="spray-size">Spray Size</label><output id="spray-size-value">96 px</output></div>
               <input id="spray-size" class="range-input" type="range" min="3" max="240" value="96" />
@@ -144,7 +149,7 @@
           <ul>
             <li>Choose Marker, Spray or Erase, then drag on the canvas. Hold Shift and click to set a straight-line start, move to preview, then click to commit. Press Escape to cancel.</li>
             <li>Marker tips: Round, Square, Chisel and Split Chisel. Adjust size, smoothing, Paint Load, Run Intensity and Paint Splatter.</li>
-            <li>Spray nozzles: Standard, Calligraphy and Spider. Adjust size, smoothing and pressure; Calligraphy and Spider support nozzle rotation.</li>
+            <li>Spray nozzles: Standard, Calligraphy and Spider. Adjust size, smoothing and pressure; Calligraphy and Spider support nozzle rotation. Spider also has an adjustable, saved Weave Speed.</li>
             <li>Choose a paint color or Silver, Copper or Gold Chrome. The surface picker offers Solid, Steel Gate, Norrtåg, City Park, Store front, Industrial and Delivery Truck.</li>
           </ul>
         </section>
