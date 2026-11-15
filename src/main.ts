@@ -5,7 +5,7 @@ import { timestampedExportFilename } from './export-filename';
 import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
 import { pointerPosition, CanvasRenderer } from './renderer';
-import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, surfaceManifestPromise, type CanvasSurface } from './surfaces';
+import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface } from './surfaces';
 import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
@@ -184,8 +184,8 @@ function updateBrushCursor(event: PointerEvent): void {
     brushCursorTip.dataset.nozzle = spraySettings.nozzle;
     brushCursorTip.dataset.material = spraySettings.material;
     brushCursorTip.style.width = `${size}px`;
-    brushCursorTip.style.height = `${size * (spraySettings.nozzle === 'calligraphy' ? 0.18 : 1)}px`;
-    brushCursorTip.style.transform = `translate(-50%, -50%) rotate(${spraySettings.nozzle === 'calligraphy' ? spraySettings.rotationDegrees : 0}deg)`;
+    brushCursorTip.style.height = `${spraySettings.nozzle === 'spider' ? Math.max(2, size * 0.018) : size * (spraySettings.nozzle === 'calligraphy' ? 0.18 : 1)}px`;
+    brushCursorTip.style.transform = `translate(-50%, -50%) rotate(${spraySettings.nozzle === 'calligraphy' || spraySettings.nozzle === 'spider' ? spraySettings.rotationDegrees : 0}deg)`;
     brushCursorTip.style.background = 'radial-gradient(circle, rgba(220,225,222,.18) 0%, rgba(220,225,222,.08) 48%, rgba(220,225,222,0) 76%)';
     brushCursor.hidden = false;
     return;
@@ -388,7 +388,7 @@ function drawNavigator(): void {
   navigatorContext.clearRect(0, 0, width, height);
   navigatorContext.fillStyle = '#17191a';
   navigatorContext.fillRect(0, 0, width, height);
-  const layers = activeSurface === 'norrtag' || activeSurface === 'citypark'
+  const layers = shouldPaintOverForeground(activeSurface)
     ? [backgroundCanvas, foregroundCanvas, canvas, runoffCanvas]
     : [backgroundCanvas, canvas, runoffCanvas, foregroundCanvas];
   for (const layer of layers) {
@@ -910,11 +910,11 @@ spraySmoothingInput.addEventListener('input', () => {
   document.querySelector('#spray-smoothing-value')!.textContent = `${spraySmoothingInput.value}%`;
 });
 document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((button) => button.addEventListener('click', () => {
-  if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy') return;
+  if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy' && button.dataset.nozzle !== 'spider') return;
   const changed = spraySettings.nozzle !== button.dataset.nozzle;
   spraySettings.nozzle = button.dataset.nozzle;
   if (changed) audio.playCapChange();
-  sprayRotationGroup.hidden = spraySettings.nozzle !== 'calligraphy';
+  sprayRotationGroup.hidden = spraySettings.nozzle !== 'calligraphy' && spraySettings.nozzle !== 'spider';
   document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((option) => {
     const selected = option.dataset.nozzle === spraySettings.nozzle;
     option.classList.toggle('active', selected);
@@ -1069,20 +1069,22 @@ try {
 } catch { /* Use the default solid surface when storage is unavailable. */ }
 function renderSurfaceOptions(): void {
   surfacePicker.replaceChildren();
-  const options: Array<{ id: string; name: string; thumb: string }> = [
+  const options: Array<{ id: string; name: string; thumb: string; thumbnail?: string }> = [
     { id: 'solid', name: 'Solid', thumb: 'surface-thumb-solid' },
     { id: 'steel-gate', name: 'Steel Gate', thumb: 'surface-thumb-steel' },
-    ...getCustomSurfaces().map(({ id, name }) => ({ id, name, thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : 'surface-thumb-custom' })),
+    ...getCustomSurfaces().map(({ id, name }) => ({
+      id, name,
+      thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : id === 'deliverytruck' ? 'surface-thumb-deliverytruck' : 'surface-thumb-custom',
+      thumbnail: ['norrtag', 'citypark', 'storefront', 'industrial', 'deliverytruck'].includes(id) ? `/surfaces/${id}-thumbnail.png` : undefined,
+    })),
   ];
   for (const option of options) {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'surface-option'; button.dataset.surface = option.id;
-    const thumb = option.id === 'citypark' || option.id === 'storefront' || option.id === 'industrial' ? document.createElement('img') : document.createElement('span');
+    const thumb = option.thumbnail ? document.createElement('img') : document.createElement('span');
     thumb.className = `surface-thumb ${option.thumb}`;
     thumb.setAttribute('aria-hidden', 'true');
-    if (thumb instanceof HTMLImageElement && option.id === 'citypark') thumb.src = '/surfaces/citypark-thumbnail.png';
-    if (thumb instanceof HTMLImageElement && option.id === 'storefront') thumb.src = '/surfaces/storefront-thumbnail.png';
-    if (thumb instanceof HTMLImageElement && option.id === 'industrial') thumb.src = '/surfaces/industrial-thumbnail.png';
+    if (thumb instanceof HTMLImageElement && option.thumbnail) thumb.src = option.thumbnail;
     const label = document.createElement('span'); label.textContent = option.name;
     button.append(thumb, label);
     surfacePicker.append(button);
@@ -1110,6 +1112,7 @@ async function updateSurface(requestedSurface: CanvasSurface = activeSurface): P
   }
   canvas.parentElement!.classList.toggle('surface-norrtag', activeSurface === 'norrtag');
   canvas.parentElement!.classList.toggle('surface-citypark', activeSurface === 'citypark');
+  canvas.parentElement!.classList.toggle('paint-over-foreground', shouldPaintOverForeground(activeSurface));
   navigation.setBounds(getSurfaceNavigationBounds(activeSurface));
   navigation.fitToView(canvasStage.clientWidth, canvasStage.clientHeight);
   audio.setSurfaceAmbience(getSurfaceAmbience(activeSurface));
@@ -1158,7 +1161,7 @@ document.querySelector<HTMLButtonElement>('#export-button')!.addEventListener('c
   const output = document.createElement('canvas'); output.width = CANVAS_WIDTH; output.height = CANVAS_HEIGHT;
   const ctx = output.getContext('2d')!;
   ctx.drawImage(backgroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  if (activeSurface === 'norrtag' || activeSurface === 'citypark') {
+  if (shouldPaintOverForeground(activeSurface)) {
     ctx.drawImage(foregroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.drawImage(canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   } else {

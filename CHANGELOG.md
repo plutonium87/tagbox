@@ -2,6 +2,22 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.0.2] - 2026-11-15
+
+### Added
+
+- Added the Spider spray nozzle with deterministic filament geometry and 0°–360° rotation on the existing spray dial.
+- Added the Delivery Truck custom surface with aligned background, transparent foreground, grayscale paint mask and full-scene selector thumbnail.
+- Added full-scene selector thumbnails for Norrtåg and Delivery Truck.
+
+### Changed
+
+- Custom surface foregrounds now render beneath paint consistently in the canvas, Navigator and PNG export, so masked paint remains visible over the artwork.
+
+### Fixed
+
+- Replaced the Norrtåg selector placeholder with a thumbnail composed from its environment and train artwork.
+
 ## [1.0.1] - 2026-11-13
 
 ### Added

@@ -2,19 +2,20 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.0.1**.
+Project version: **1.0.2**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
 ## Features
 
 - Marker with Round, Square, Chisel and Split Chisel tips. Non-round tips can be rotated with the graphical dial by dragging it or using its keyboard controls.
-- Spray with Standard and Calligraphy nozzles. Calligraphy has a matching graphical rotation dial; Standard is rotationally symmetric.
+- Spray with Standard, Calligraphy and Spider nozzles. Calligraphy and Spider share the graphical 0°–360° nozzle rotation dial; Spider lays down directional paint filaments.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
-- Selectable surfaces include Solid, Steel Gate, Norrtåg, City Park, Store front and Industrial. Custom surfaces can be registered through the surface manifest.
-- Surface-native logical dimensions: Solid, Steel Gate and Store front use 1920×1080; Norrtåg, City Park and Industrial use their configured 3240×1080 dimensions.
-- Steel Gate uses photographic background and detail layers. Norrtåg and City Park use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
+- Selectable surfaces include Solid, Steel Gate, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
+- Surface-native logical dimensions: Solid, Steel Gate and Store front use 1920×1080; Norrtåg, City Park, Industrial and Delivery Truck use 3240×1080.
+- Steel Gate uses photographic background and detail layers. Norrtåg, City Park and Delivery Truck use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
+- Custom surface selector thumbnails composite background and foreground artwork and fit the full scene into the selector preview.
 - Navigator thumbnail and viewport tracking, zoom and pan.
 - Independent Marker, Spray and Erase tools, Undo, Shift-click straight lines, clear-canvas, Fullscreen and timestamped native-dimension PNG export.
 - Lazy surface loading with loading feedback and an initial fit-to-view viewport.
@@ -34,7 +35,7 @@ Project version: **1.0.1**.
 ### Spray
 
 - Spray Size: 3–240 px (default 96 px).
-- Standard and Calligraphy nozzles. Calligraphy uses a narrow oval spray and supports 0°–360° nozzle rotation using the graphical dial.
+- Standard, Calligraphy and Spider nozzles. Calligraphy uses a narrow oval spray. Spider creates a directional bundle of fine paint filaments. Both support 0°–360° rotation using the graphical dial.
 - Smoothing: 0%–100% (default 45%); Pressure: 0%–100% (default 55%).
 - Paint and all three Chrome materials are available.
 
@@ -45,7 +46,7 @@ Select a custom color, one of the 16 preset colors or a saved color. Selecting a
 ### Audio
 
 - Spray effects: start, continuous loop and end; can-shake detection; cap-change sounds for Marker tip and Spray nozzle selection; and can-color sounds for color and Chrome selection.
-- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Steel Gate and Store front use Urban ambience, City Park uses park ambience, and Industrial uses industrial ambience. Solid is silent.
+- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Steel Gate, Store front and Delivery Truck use Urban ambience, City Park uses park ambience, and Industrial uses industrial ambience. Solid is silent.
 - The top sound button or settings-panel Sound control mutes or enables audio. Master, Ambience and Effects volumes are adjustable independently. These preferences are saved in this browser.
 - Can-shake detection is limited to desktop mouse movement with Spray selected while not drawing.
 
@@ -73,9 +74,9 @@ Fullscreen expands the canvas workspace while keeping its available actions, inc
 
 ## Surfaces and export
 
-Solid, Steel Gate and Store front use 1920×1080. Norrtåg, City Park and Industrial are registered through the surface manifest at their configured dimensions. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, foreground artwork follows each surface's configured layer order, and paint masks restrict Marker, Spray and runoff deposition to paintable areas.
+Solid, Steel Gate and Store front use 1920×1080. Norrtåg, City Park, Industrial and Delivery Truck are registered through the surface manifest at 3240×1080. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, custom foreground artwork renders beneath paint, and paint masks restrict Marker, Spray and runoff deposition to paintable areas. Steel Gate retains its built-in detail overlay.
 
-The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's artwork, paint mask, optional AO map and ambience when selected, then keeps a small cache of recently used surfaces. Background, foreground, paint-mask and AO-map paths are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground. See [Custom surface assets](public/surfaces/README.md).
+The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's artwork, paint mask, optional AO map and ambience when selected, then keeps a small cache of recently used surfaces. Background, foreground, paint-mask and AO-map paths are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground; Delivery Truck uses its authored grayscale mask directly. See [Custom surface assets](public/surfaces/README.md).
 
 Export PNG downloads the active logical canvas at its configured dimensions. Filenames include a local timestamp.
 
@@ -116,34 +117,53 @@ The production image uses deploy/Dockerfile to serve the built dist/ directory w
 
 ~~~sh
 npm run build
-docker compose build
+docker compose build --no-cache tagbox
 ~~~
 
 The Compose service attaches to the external Docker network kebabstugan_default. Create that network before starting the service if it does not already exist:
 
 ~~~sh
 docker network inspect kebabstugan_default >/dev/null 2>&1 || docker network create kebabstugan_default
-docker compose up -d
+docker compose up -d --no-deps tagbox
 ~~~
 
 The Cloudflare Tunnel is external to this repository and is not started or configured by Compose. Connect the tunnel to the same Docker network and route the public hostname to the Tagbox container on HTTP port 80 (for example, http://tagbox:80). Configure DNS and tunnel credentials in the Cloudflare Tunnel deployment, outside this project.
 
 ## Project structure
 
-~~~text
+```text
 .
-├── CHANGELOG.md
-├── LICENSE
-├── README.md
+├── docs/
+│   ├── architecture/
+│   ├── proposals/
+│   └── ASSET_CREDITS_AND_LICENSES.md
 ├── deploy/
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── public/
+│   ├── assets/
+│   │   └── chrome/
 │   ├── audio/
+│   │   ├── ambience/
+│   │   └── spray/
 │   └── surfaces/
+│       ├── citypark/
+│       ├── deliverytruck/
+│       ├── industrial/
+│       ├── norrtag/
+│       ├── steel-gate/
+│       ├── storefront/
+│       ├── citypark-thumbnail.png
+│       ├── deliverytruck-thumbnail.png
+│       ├── industrial-thumbnail.png
+│       ├── manifest.json
+│       ├── norrtag-thumbnail.png
+│       ├── storefront-thumbnail.png
+│       └── README.md
 ├── src/
 │   ├── audio.ts
 │   ├── brush.ts
+│   ├── export-filename.ts
 │   ├── main.ts
 │   ├── navigation.ts
 │   ├── renderer.ts
@@ -154,12 +174,24 @@ The Cloudflare Tunnel is external to this repository and is not started or confi
 │   ├── style.css
 │   ├── surfaces.ts
 │   └── version.d.ts
+├── tests/
+│   ├── chrome-rendering.html
+│   ├── chrome-rendering.ts
+│   ├── runoff-obstacles.html
+│   ├── runoff-obstacles.ts
+│   ├── surface-compositing.html
+│   ├── surface-compositing.ts
+│   └── README.md
+├── CHANGELOG.md
+├── LICENSE
+├── README.md
 ├── compose.yml
 ├── index.html
 ├── package.json
 ├── package-lock.json
+├── tsconfig.json
 └── vite.config.ts
-~~~
+```
 
 ## Browser support and limitations
 

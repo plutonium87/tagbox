@@ -194,6 +194,11 @@ export function getSurfacePaintMask(surface: CanvasSurface): HTMLCanvasElement |
   return customSurfaces.get(surface)?.paintMask ?? null;
 }
 
+/** Custom foregrounds describe the scene behind paint; the built-in steel gate remains an overlay. */
+export function shouldPaintOverForeground(surface: CanvasSurface): boolean {
+  return Boolean(customSurfaces.get(surface)?.definition.foreground);
+}
+
 export function getSurfaceAoMap(surface: CanvasSurface): HTMLImageElement | null {
   return customSurfaces.get(surface)?.aoMap ?? null;
 }
@@ -237,7 +242,7 @@ function ensureGateLoaded(): Promise<void> {
   gateLoadPromise = new Promise<void>((resolve) => {
     let remaining = 3;
     const complete = (): void => { if (--remaining === 0) resolve(); };
-    for (const [image, src] of [[gateBackdropPhoto, '/concrete-photo-background.png'], [gatePhoto, '/steel-gate-photo-background.png'], [gateDetailsPhoto, '/steel-gate-photo-details.png']] as const) {
+    for (const [image, src] of [[gateBackdropPhoto, '/surfaces/steel-gate/concrete-photo-background.png'], [gatePhoto, '/surfaces/steel-gate/steel-gate-photo-background.png'], [gateDetailsPhoto, '/surfaces/steel-gate/steel-gate-photo-details.png']] as const) {
       image.addEventListener('load', complete, { once: true });
       image.addEventListener('error', complete, { once: true });
       image.src = src;

@@ -1,0 +1,13 @@
+{
+  "id": "deliverytruck",
+  "name": "Delivery Truck",
+  "width": 3240,
+  "height": 1080,
+  "background": "delivery_truck_bg.png",
+  "foreground": "delivery_truck_3240x1080.png",
+  "paintMask": "delivery_truck_paintmask_3240x1080.png",
+  "paintMaskMode": "grayscale",
+  "fit": "stretch",
+  "environmentParallax": 0.03,
+  "ambience": "/audio/ambience/jadeallencook-night-city-side-street-with-passing-cars-and-distant-urban-ambience-339223.mp3"
+}

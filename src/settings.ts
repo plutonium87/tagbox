@@ -1,7 +1,7 @@
 export interface Point { x: number; y: number }
 export type BrushShape = 'round' | 'square' | 'chisel' | 'split-chisel';
 export type Material = 'paint' | 'silver-chrome' | 'copper-chrome' | 'gold-chrome';
-export type SprayNozzle = 'standard' | 'calligraphy';
+export type SprayNozzle = 'standard' | 'calligraphy' | 'spider';
 export interface BrushSettings { size: number; color: string; material: Material; smoothing: number; wetness: number; intensity: number }
 export interface Dab extends Point { size: number; color: string; load: number; paintLoad: number; speed: number; velocity: number; angle: number }
 export interface SecondarySplatterRunoff extends Point { width: number; length: number; maxLength: number; requestedMaxLength: number; speed: number; age: number; seed: number; started: boolean }

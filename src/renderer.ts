@@ -127,9 +127,9 @@ ${surfaceMaterialShader}
 void main(){ vec2 p=gl_PointCoord-vec2(0.5); float coverage=1.0; if(u_shape==0 && dot(p,p)>0.25) discard; if(u_shape!=0){ float c=cos(v_angle); float s=sin(v_angle); vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y); if(u_shape==1){ vec2 pixel=q*v_pointSize; float edge=v_brushSizePx*0.5-max(abs(pixel.x),abs(pixel.y)); coverage=clamp(edge+0.5,0.0,1.0); if(coverage<=0.0) discard; } else if(u_shape==2){ if((q.x*q.x)/(0.25)+(q.y*q.y)/(0.0378)>1.0) discard; } else { bool inShortSegment=q.x>=-0.5 && q.x<=-0.2; bool inLongSegment=q.x>=-0.1 && q.x<=0.5; if(abs(q.y)>0.1722222 || !(inShortSegment || inLongSegment)) discard; } } vec2 maskUv=vec2(gl_FragCoord.x/(u_scale.x*u_logicalSize.x),gl_FragCoord.y/(u_scale.y*u_logicalSize.y)); float paintability=u_hasPaintMask==1?texture(u_paintMask,maskUv).r:1.0; coverage*=paintability; if(coverage<=0.001) discard; vec3 color=u_maskOnly==1?vec3(1.0):shadeSurfacePaint(u_color,maskUv); outColor=vec4(color,coverage); }`;
 const sprayVertex = `#version 300 es
 precision highp float;
-in highp vec4 a_particle; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; uniform highp float u_nozzleRotation;
+in highp vec4 a_particle; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; uniform highp float u_nozzleRotation; uniform highp int u_spider;
 out highp float v_pressure; out highp vec2 v_uv; out highp vec2 v_world; out highp vec2 v_center;
-void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.5),vec2(0.5,0.5)); vec2 corner=corners[gl_VertexID]; float scale=min(u_scale.x,u_scale.y); vec2 local=vec2(corner.x,corner.y*u_nozzleAspect)*a_particle.z*scale; float c=cos(u_nozzleRotation); float s=sin(u_nozzleRotation); vec2 rotated=vec2(c*local.x-s*local.y,s*local.x+c*local.y); vec2 pixel=a_particle.xy*u_scale+rotated; vec2 clip=pixel/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_pressure=a_particle.w; v_uv=corner+vec2(0.5); v_world=pixel/u_scale; v_center=a_particle.xy; }`;
+void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.5),vec2(0.5,0.5)); vec2 corner=corners[gl_VertexID]; float scale=min(u_scale.x,u_scale.y); float minorSize=u_spider==1?u_nozzleAspect:a_particle.z*u_nozzleAspect; vec2 local=vec2(corner.x*a_particle.z,corner.y*minorSize)*scale; float rotation=u_nozzleRotation; if(u_spider==1){ float seed=fract(sin(dot(a_particle.xy,vec2(12.9898,78.233)))*43758.5453); float deviation=seed>0.86?(seed-0.93)*5.0:(seed-0.5)*0.24; rotation+=deviation; } float c=cos(rotation); float s=sin(rotation); vec2 rotated=vec2(c*local.x-s*local.y,s*local.x+c*local.y); vec2 pixel=a_particle.xy*u_scale+rotated; vec2 clip=pixel/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_pressure=a_particle.w; v_uv=corner+vec2(0.5); v_world=pixel/u_scale; v_center=a_particle.xy; }`;
 const sprayFragment = `#version 300 es
 precision highp float;
 uniform highp vec3 u_color; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; in highp float v_pressure; in highp vec2 v_uv; in highp vec2 v_world; in highp vec2 v_center; out highp vec4 outColor;
@@ -327,8 +327,8 @@ export class CanvasRenderer {
   private ensureChromeAssets(): void {
     if (this.chromeAssetsStarted) return;
     this.chromeAssetsStarted = true;
-    this.environmentImage.src = '/chrome-environment.png';
-    this.reflectionImage.src = '/reflection_8bit_grayscale.png';
+    this.environmentImage.src = '/assets/chrome/chrome-environment.png';
+    this.reflectionImage.src = '/assets/chrome/reflection_8bit_grayscale.png';
   }
 
   private createFramebuffer(gl: WebGL2RenderingContext, texture: WebGLTexture): WebGLFramebuffer {
@@ -716,8 +716,9 @@ export class CanvasRenderer {
     gl.uniform2f(gl.getUniformLocation(this.sprayProgram, 'u_targetSize'), this.canvas.width, this.canvas.height);
     gl.uniform2f(gl.getUniformLocation(this.sprayProgram, 'u_scale'), this.canvas.width / this.width, this.canvas.height / this.height);
     gl.uniform3fv(gl.getUniformLocation(this.sprayProgram, 'u_color'), this.parseColor(stroke.color));
-    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleAspect'), stroke.nozzle === 'calligraphy' ? 0.18 : 1.0);
-    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleRotation'), stroke.nozzle === 'calligraphy' ? stroke.rotation * Math.PI / 180 : 0);
+    gl.uniform1i(gl.getUniformLocation(this.sprayProgram, 'u_spider'), stroke.nozzle === 'spider' ? 1 : 0);
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleAspect'), stroke.nozzle === 'calligraphy' ? 0.18 : stroke.nozzle === 'spider' ? 1.1 + Math.max(0, Math.min(1, stroke.pressure)) * 1.6 : 1.0);
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleRotation'), stroke.nozzle === 'calligraphy' || stroke.nozzle === 'spider' ? stroke.rotation * Math.PI / 180 : 0);
     this.bindPaintMask(this.sprayProgram);
     this.bindSurfaceMaterialMaps(this.sprayProgram, stroke.material === 'paint');
     const attribute = gl.getAttribLocation(this.sprayProgram, 'a_particle');

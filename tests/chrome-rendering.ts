@@ -7,7 +7,7 @@ const brushSize = 50;
 
 async function reportEnvironmentPixels(): Promise<void> {
   const image = new Image();
-  image.src = '/chrome-environment.png';
+  image.src = '/assets/chrome/chrome-environment.png';
   await image.decode();
   const sample = document.createElement('canvas');
   sample.width = 1672;
