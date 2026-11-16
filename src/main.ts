@@ -6,7 +6,7 @@ import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
 import { pointerPosition, CanvasRenderer } from './renderer';
 import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface } from './surfaces';
-import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveSpeed, restoreSpiderWeaveSpeed, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
+import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveRate, restoreSpiderWeaveRate, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
 const runoffCanvas = document.querySelector<HTMLCanvasElement>('#runoff-canvas')!;
@@ -39,8 +39,8 @@ const spraySizeInput = document.querySelector<HTMLInputElement>('#spray-size')!;
 const eraserSizeInput = document.querySelector<HTMLInputElement>('#eraser-size')!;
 const sprayPressureInput = document.querySelector<HTMLInputElement>('#spray-pressure')!;
 const spraySmoothingInput = document.querySelector<HTMLInputElement>('#spray-smoothing')!;
-const spiderWeaveInput = document.querySelector<HTMLInputElement>('#spider-weave-speed')!;
-const spiderWeaveValue = document.querySelector<HTMLOutputElement>('#spider-weave-speed-value')!;
+const spiderWeaveInput = document.querySelector<HTMLInputElement>('#spider-weave-rate')!;
+const spiderWeaveValue = document.querySelector<HTMLOutputElement>('#spider-weave-rate-value')!;
 const spiderWeaveGroup = document.querySelector<HTMLElement>('#spider-weave-group')!;
 const sprayRotationGroup = document.querySelector<HTMLElement>('#spray-rotation-group')!;
 const sprayRotationDial = document.querySelector<HTMLButtonElement>('#spray-rotation-dial')!;
@@ -471,7 +471,7 @@ function startStroke(event: PointerEvent, initialEvent = event): void {
   else if (strokeTool === 'erase') brush.begin(point, initialEvent.timeStamp, eraserSettings.size, '#ffffff', settings.smoothing, 0, 'round', 'paint', 0, false, 240);
   else {
     spraySettings.size = clampSpraySize(spraySettings.size);
-    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveSpeed);
+    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
     if (spraySettings.nozzle === 'spider') spiderTimer = window.setInterval(() => spray.tick(performance.now()), 16);
     audio.startSpray();
   }
@@ -519,7 +519,7 @@ function commitStraightLine(point: Point, time: number): void {
     const stroke = brush.end();
     if (stroke) { const operation: PaintOperation = { kind: 'erase', stroke }; operations.push(operation); renderer.commitOperation(operation); }
   } else {
-    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveSpeed);
+    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
     audio.startSpray(); spray.move(point, started + 500);
     const stroke = spray.end(started + 500); audio.endSpray();
     if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); }
@@ -755,6 +755,11 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   return target.closest('textarea, [role="textbox"], [role="searchbox"], [contenteditable]:not([contenteditable="false"])') !== null;
 }
 
+function isInteractiveShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.closest('input, textarea, select, button, a[href], summary, [role="button"], [role="slider"], [role="checkbox"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], [role="listbox"], [contenteditable]:not([contenteditable="false"])') !== null;
+}
+
 document.addEventListener('keydown', (event) => {
   const isTyping = isTextEntryTarget(event.target);
   if (event.code === 'Space' && !helpDialog.open && !isTyping) {
@@ -775,6 +780,18 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (helpDialog.open || isTyping) return;
+  if (!event.repeat && !event.isComposing && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !isInteractiveShortcutTarget(event.target)) {
+    switch (event.key.toLowerCase()) {
+      case 'b': selectTool('spray'); event.preventDefault(); return;
+      case 'm': selectTool('marker'); event.preventDefault(); return;
+      case 'e': selectTool('erase'); event.preventDefault(); return;
+      case 'f':
+        event.preventDefault();
+        if (appShell.classList.contains('canvas-only')) void exitCanvasOnly();
+        else void enterCanvasOnly();
+        return;
+    }
+  }
   if (event.key === 'Escape' && lineAnchor) { cancelStraightLine(); event.preventDefault(); return; }
   if (event.key === 'Escape' && appShell.classList.contains('canvas-only')) { void exitCanvasOnly(); return; }
   if (event.key === 'Delete' && !event.repeat && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
@@ -840,22 +857,30 @@ navigatorMap.addEventListener('pointerup', endNavigatorDrag);
 navigatorMap.addEventListener('pointercancel', endNavigatorDrag);
 navigatorMap.addEventListener('lostpointercapture', endNavigatorDrag);
 
-async function enterCanvasOnly(): Promise<void> {
+function enterCanvasOnlyLayout(): void {
+  if (appShell.classList.contains('canvas-only')) return;
   toolbarWasCollapsedBeforeFullscreen = toolbar.classList.contains('is-collapsed');
   appShell.classList.add('canvas-only');
   canvasStage.append(soundToggle);
   setToolbarCollapsed(true);
   for (const control of [document.querySelector('#export-button')!, undoButton, document.querySelector('#clear-button')!, helpButton, modeButton]) fullscreenActions.append(control);
   modeButton.textContent = 'Exit fullscreen';
-  try { if (!document.fullscreenElement && appShell.requestFullscreen) await appShell.requestFullscreen(); } catch { /* CSS canvas-only mode remains available when fullscreen is denied. */ }
-  resizeCanvas();
 }
-async function exitCanvasOnly(): Promise<void> {
+function exitCanvasOnlyLayout(): void {
+  if (!appShell.classList.contains('canvas-only')) return;
   appShell.classList.remove('canvas-only');
   topActions.append(soundToggle);
   setToolbarCollapsed(toolbarWasCollapsedBeforeFullscreen);
   modeButton.textContent = 'Fullscreen';
   for (const control of [document.querySelector('#export-button')!, undoButton, document.querySelector('#clear-button')!, helpButton, modeButton]) topActions.append(control);
+}
+async function enterCanvasOnly(): Promise<void> {
+  enterCanvasOnlyLayout();
+  try { if ((!document.fullscreenElement || !appShell.contains(document.fullscreenElement)) && appShell.requestFullscreen) await appShell.requestFullscreen(); } catch { /* CSS canvas-only mode remains available when fullscreen is denied. */ }
+  resizeCanvas();
+}
+async function exitCanvasOnly(): Promise<void> {
+  exitCanvasOnlyLayout();
   if (document.fullscreenElement && document.exitFullscreen) {
     try { await document.exitFullscreen(); } catch { /* Keep the fullscreen controls available. */ }
   }
@@ -875,14 +900,9 @@ helpDialog.addEventListener('click', (event) => {
 helpDialog.addEventListener('close', () => helpButton.focus());
 document.addEventListener('fullscreenchange', () => {
   resetPanInteraction();
+  if (document.fullscreenElement && appShell.contains(document.fullscreenElement)) enterCanvasOnlyLayout();
+  else if (appShell.classList.contains('canvas-only')) exitCanvasOnlyLayout();
   resizeCanvas();
-  if (!document.fullscreenElement && appShell.classList.contains('canvas-only')) {
-    appShell.classList.remove('canvas-only'); modeButton.textContent = 'Fullscreen';
-    topActions.append(soundToggle);
-    setToolbarCollapsed(toolbarWasCollapsedBeforeFullscreen);
-    for (const control of [document.querySelector('#export-button')!, undoButton, document.querySelector('#clear-button')!, helpButton, modeButton]) topActions.append(control);
-    resizeCanvas();
-  }
 });
 
 sizeInput.addEventListener('input', () => {
@@ -917,12 +937,12 @@ spraySmoothingInput.addEventListener('input', () => {
   spraySettings.smoothing = Number(spraySmoothingInput.value) / 100;
   document.querySelector('#spray-smoothing-value')!.textContent = `${spraySmoothingInput.value}%`;
 });
-const spiderWeaveSpeedKey = 'tagbox.spider-weave-speed';
+const spiderWeaveRateKey = 'tagbox.spider-weave-speed';
 spiderWeaveInput.addEventListener('input', () => {
-  spraySettings.weaveSpeed = clampSpiderWeaveSpeed(Number(spiderWeaveInput.value));
-  spiderWeaveInput.value = String(spraySettings.weaveSpeed);
-  spiderWeaveValue.textContent = `${spraySettings.weaveSpeed}x`;
-  try { localStorage.setItem(spiderWeaveSpeedKey, String(spraySettings.weaveSpeed)); } catch { /* The current session still uses the selected speed. */ }
+  spraySettings.weaveRate = clampSpiderWeaveRate(Number(spiderWeaveInput.value));
+  spiderWeaveInput.value = String(spraySettings.weaveRate);
+  spiderWeaveValue.textContent = `${spraySettings.weaveRate}x`;
+  try { localStorage.setItem(spiderWeaveRateKey, String(spraySettings.weaveRate)); } catch { /* The current session still uses the selected rate. */ }
 });
 document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((button) => button.addEventListener('click', () => {
   if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy' && button.dataset.nozzle !== 'spider') return;
@@ -1057,12 +1077,12 @@ try {
   if (storedMaterial === 'silver-chrome' || storedMaterial === 'copper-chrome' || storedMaterial === 'gold-chrome') spraySettings.material = storedMaterial;
 } catch { /* Use ordinary spray when storage is unavailable. */ }
 try {
-  const storedWeaveSpeed = localStorage.getItem(spiderWeaveSpeedKey);
-  spraySettings.weaveSpeed = restoreSpiderWeaveSpeed(storedWeaveSpeed);
-  if (storedWeaveSpeed !== null && String(spraySettings.weaveSpeed) !== storedWeaveSpeed) localStorage.setItem(spiderWeaveSpeedKey, String(spraySettings.weaveSpeed));
-} catch { /* Use the default weave speed when storage is unavailable. */ }
-spiderWeaveInput.value = String(spraySettings.weaveSpeed);
-spiderWeaveValue.textContent = `${spraySettings.weaveSpeed}x`;
+  const storedWeaveRate = localStorage.getItem(spiderWeaveRateKey);
+  spraySettings.weaveRate = restoreSpiderWeaveRate(storedWeaveRate);
+  if (storedWeaveRate !== null && String(spraySettings.weaveRate) !== storedWeaveRate) localStorage.setItem(spiderWeaveRateKey, String(spraySettings.weaveRate));
+} catch { /* Use the default weave rate when storage is unavailable. */ }
+spiderWeaveInput.value = String(spraySettings.weaveRate);
+spiderWeaveValue.textContent = `${spraySettings.weaveRate}x`;
 renderPalettes();
 colorInput.addEventListener('input', () => setColor(colorInput.value, true, true));
 saveColorButton.addEventListener('click', () => {
@@ -1094,11 +1114,10 @@ function renderSurfaceOptions(): void {
   surfacePicker.replaceChildren();
   const options: Array<{ id: string; name: string; thumb: string; thumbnail?: string }> = [
     { id: 'solid', name: 'Solid', thumb: 'surface-thumb-solid' },
-    { id: 'steel-gate', name: 'Steel Gate', thumb: 'surface-thumb-steel' },
     ...getCustomSurfaces().map(({ id, name }) => ({
       id, name,
-      thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : id === 'deliverytruck' ? 'surface-thumb-deliverytruck' : 'surface-thumb-custom',
-      thumbnail: ['norrtag', 'citypark', 'storefront', 'industrial', 'deliverytruck'].includes(id) ? `/surfaces/${id}-thumbnail.png` : undefined,
+      thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : id === 'deliverytruck' ? 'surface-thumb-deliverytruck' : id === 'steeldoors' ? 'surface-thumb-steeldoors' : 'surface-thumb-custom',
+      thumbnail: ['norrtag', 'citypark', 'storefront', 'industrial', 'deliverytruck', 'steeldoors'].includes(id) ? `/surfaces/${id}-thumbnail.png` : undefined,
     })),
   ];
   for (const option of options) {
@@ -1174,7 +1193,7 @@ loadingRetry.addEventListener('click', () => { void updateSurface(pendingSurface
 void (async () => {
   loadingTask.textContent = 'Loading surface configuration';
   await surfaceManifestPromise;
-  if (activeSurface !== 'solid' && activeSurface !== 'steel-gate' && !getCustomSurfaces().some(({ id }) => id === activeSurface)) activeSurface = 'solid';
+  if (activeSurface !== 'solid' && !getCustomSurfaces().some(({ id }) => id === activeSurface)) activeSurface = 'solid';
   renderSurfaceOptions();
   await updateSurface(activeSurface);
 })();

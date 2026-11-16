@@ -95,9 +95,9 @@
               <div class="range-ends"><span>0°</span><span>360°</span></div>
             </div>
             <div id="spider-weave-group" class="tool-group" hidden>
-              <div class="control-label"><label for="spider-weave-speed">Weave Speed</label><output id="spider-weave-speed-value">20x</output></div>
-              <input id="spider-weave-speed" class="range-input" type="range" min="5" max="50" step="1" value="20" />
-              <div class="range-ends"><span>5x</span><span>50x</span></div>
+              <div class="control-label"><label for="spider-weave-rate">Weave Rate</label><output id="spider-weave-rate-value">50x</output></div>
+              <input id="spider-weave-rate" class="range-input" type="range" min="10" max="100" step="1" value="50" />
+              <div class="range-ends"><span>10x</span><span>100x</span></div>
             </div>
             <div class="tool-group">
               <div class="control-label"><label for="spray-size">Spray Size</label><output id="spray-size-value">96 px</output></div>
@@ -135,7 +135,6 @@
             <div class="control-label"><span id="background-heading" class="shape-label">Background</span></div>
             <div id="surface-picker" class="surface-picker" role="group" aria-label="Choose canvas background">
               <button class="surface-option active" type="button" data-surface="solid" aria-pressed="true"><span class="surface-thumb surface-thumb-solid"></span><span>Solid</span></button>
-              <button class="surface-option" type="button" data-surface="steel-gate" aria-pressed="false"><span class="surface-thumb surface-thumb-steel"></span><span>Steel Gate</span></button>
             </div>
             <div class="color-control solid-color-control"><span class="background-color-swatch"></span><input id="canvas-background" type="color" value="#000000" aria-label="Choose solid background color" /><span class="color-name">Solid color</span><span class="chevron">↗</span></div>
           </section>
@@ -149,8 +148,8 @@
           <ul>
             <li>Choose Marker, Spray or Erase, then drag on the canvas. Hold Shift and click to set a straight-line start, move to preview, then click to commit. Press Escape to cancel.</li>
             <li>Marker tips: Round, Square, Chisel and Split Chisel. Adjust size, smoothing, Paint Load, Run Intensity and Paint Splatter.</li>
-            <li>Spray nozzles: Standard, Calligraphy and Spider. Adjust size, smoothing and pressure; Calligraphy and Spider support nozzle rotation. Spider also has an adjustable, saved Weave Speed.</li>
-            <li>Choose a paint color or Silver, Copper or Gold Chrome. The surface picker offers Solid, Steel Gate, Norrtåg, City Park, Store front, Industrial and Delivery Truck.</li>
+            <li>Spray nozzles: Standard, Calligraphy and Spider. Adjust size, smoothing and pressure; Calligraphy and Spider support nozzle rotation. Spider also has an adjustable, saved Weave Rate.</li>
+            <li>Choose a paint color or Silver, Copper or Gold Chrome. The surface picker offers Solid, Steel Doors, Norrtåg, City Park, Store front, Industrial and Delivery Truck.</li>
           </ul>
         </section>
         <section class="help-section">
@@ -158,7 +157,7 @@
           <ul>
             <li>Mouse wheel over the canvas zooms. Middle-button or right-button drag pans; hold Space and left-drag to pan.</li>
             <li>Undo Stroke or Ctrl+Z (⌘Z on Mac) undoes the last stroke. Clear Canvas or Delete clears the canvas on desktop.</li>
-            <li>Escape exits Fullscreen. Focus a rotation dial and use arrow keys to rotate 1° (Shift+arrow: 5°); Home and End select 0° and 360°.</li>
+            <li>B selects Spray, M selects Marker, E selects Eraser and F toggles Fullscreen. Escape exits Fullscreen. Focus a rotation dial and use arrow keys to rotate 1° (Shift+arrow: 5°); Home and End select 0° and 360°.</li>
             <li>Drag the Navigator map or its viewport rectangle to move around the canvas. Use its toggle to hide or show it.</li>
           </ul>
         </section>

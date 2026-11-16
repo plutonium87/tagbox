@@ -2,7 +2,7 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.1.0**.
+Project version: **1.2.0**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
@@ -12,9 +12,9 @@ Project version: **1.1.0**.
 - Spray with Standard, Calligraphy and Spider nozzles. Calligraphy and Spider share the graphical 0°–360° nozzle rotation dial; Spider lays down two continuous, independently weaving filaments in a rectangular footprint, including while stationary.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
-- Selectable surfaces include Solid, Steel Gate, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
-- Surface-native logical dimensions: Solid, Steel Gate and Store front use 1920×1080; Norrtåg, City Park, Industrial and Delivery Truck use 3240×1080.
-- Steel Gate uses photographic background and detail layers. Norrtåg, City Park and Delivery Truck use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
+- Selectable surfaces include Solid, Steel Doors, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
+- Surface-native logical dimensions: Solid, Steel Doors and Store front use 1920×1080; Norrtåg, City Park, Industrial and Delivery Truck use 3240×1080.
+- Steel Doors uses aligned background, fixed foreground handles and a grayscale paint mask. Norrtåg, City Park and Delivery Truck use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
 - Custom surface selector thumbnails composite background and foreground artwork and fit the full scene into the selector preview.
 - Navigator thumbnail and viewport tracking, zoom and pan.
 - Independent Marker, Spray and Erase tools, Undo, Shift-click straight lines, clear-canvas, Fullscreen and timestamped native-dimension PNG export.
@@ -36,18 +36,18 @@ Project version: **1.1.0**.
 
 - Spray Size: 3–240 px (default 96 px).
 - Standard, Calligraphy and Spider nozzles. Calligraphy uses a narrow oval spray. Spider lays two continuous, independently weaving filaments in a rectangular footprint. Both support 0°–360° rotation using the graphical dial.
-- Spider Weave Speed: 5×–50× (default 20×), saved in this browser and applied to new strokes.
+- Spider Weave Rate: 10×–100× (default 50×), saved in this browser and applied to new strokes.
 - Smoothing: 0%–100% (default 45%); Pressure: 0%–100% (default 55%).
 - Paint and all three Chrome materials are available.
 
 ### Colors and materials
 
-Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, Spider Weave Speed, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. The active tool, sizes, tip/nozzle selections, rotations and other live adjustment controls return to their defaults on reload.
+Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, Spider Weave Rate, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. The active tool, sizes, tip/nozzle selections, rotations and other live adjustment controls return to their defaults on reload.
 
 ### Audio
 
 - Spray effects: start, continuous loop and end; can-shake detection; cap-change sounds for Marker tip and Spray nozzle selection; and can-color sounds for color and Chrome selection.
-- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Steel Gate, Store front and Delivery Truck use Urban ambience, City Park uses park ambience, and Industrial uses industrial ambience. Solid is silent.
+- Ambient loops are selected by the active surface and crossfade when the surface changes. Norrtåg uses Railway ambience, Store front and Delivery Truck use Urban ambience; Steel Doors uses City Park ambience, City Park uses park ambience, and Industrial uses industrial ambience. Solid is silent.
 - The top sound button or settings-panel Sound control mutes or enables audio. Master, Ambience and Effects volumes are adjustable independently. These preferences are saved in this browser.
 - Can-shake detection is limited to desktop mouse movement with Spray selected while not drawing.
 
@@ -60,6 +60,7 @@ Select a custom color, one of the 16 preset colors or a saved color. Selecting a
 - Middle-button or right-button drag pans. Hold Space over the canvas for a grab cursor, then left-drag for a grabbing cursor. Middle- and right-button drags show the grabbing cursor; right-button drag suppresses the browser context menu over the canvas.
 - Drag the Navigator map or viewport rectangle to change the view. The Navigator can be hidden or shown with its toggle.
 - Use Undo Stroke or Ctrl+Z (⌘Z on Mac) to undo the last stroke. Use Clear Canvas or Delete to clear the canvas on desktop.
+- Press B for Spray, M for Marker, E for Eraser, and F to toggle Fullscreen. These shortcuts are ignored while typing or using interactive controls.
 - Escape exits Fullscreen/canvas-only mode.
 - Focus either rotation dial and use arrow keys to rotate by 1° (Shift+arrow: 5°); Home and End select 0° and 360°.
 
@@ -75,7 +76,7 @@ Fullscreen expands the canvas workspace while keeping its available actions, inc
 
 ## Surfaces and export
 
-Solid, Steel Gate and Store front use 1920×1080. Norrtåg, City Park, Industrial and Delivery Truck are registered through the surface manifest at 3240×1080. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, custom foreground artwork renders beneath paint, and paint masks restrict Marker, Spray and runoff deposition to paintable areas. Steel Gate retains its built-in detail overlay.
+Solid, Steel Doors and Store front use 1920×1080. Norrtåg, City Park, Industrial and Delivery Truck are registered through the surface manifest at 3240×1080. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, custom foreground artwork renders beneath paint, and paint masks restrict Marker, Spray and runoff deposition to paintable areas. Steel Doors uses its configured fixed foreground overlay.
 
 The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's artwork, paint mask, optional AO map and ambience when selected, then keeps a small cache of recently used surfaces. Background, foreground, paint-mask and AO-map paths are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground; Delivery Truck uses its authored grayscale mask directly. See [Custom surface assets](public/surfaces/README.md).
 
@@ -152,7 +153,7 @@ The Cloudflare Tunnel is external to this repository and is not started or confi
 │       ├── deliverytruck/
 │       ├── industrial/
 │       ├── norrtag/
-│       ├── steel-gate/
+│       ├── steeldoors/
 │       ├── storefront/
 │       ├── citypark-thumbnail.png
 │       ├── deliverytruck-thumbnail.png
@@ -160,6 +161,7 @@ The Cloudflare Tunnel is external to this repository and is not started or confi
 │       ├── manifest.json
 │       ├── norrtag-thumbnail.png
 │       ├── storefront-thumbnail.png
+│       ├── steeldoors-thumbnail.png
 │       └── README.md
 ├── src/
 │   ├── audio.ts

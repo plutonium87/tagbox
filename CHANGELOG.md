@@ -2,6 +2,17 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.2.0] - 2026-11-16
+
+### Added
+
+- Added B/M/E shortcuts for Spray, Marker and Eraser, plus F to toggle browser fullscreen; fullscreen changes initiated externally now synchronize the canvas layout.
+- Replaced Steel Gate with Steel Doors and kept its handles in a fixed foreground overlay across the canvas, Navigator and PNG export.
+
+### Changed
+
+- Expanded Spider Weave Rate to 10×–100× with a 50× default. Each stroke retains the rate selected when it started.
+
 ## [1.1.0] - 2026-11-15
 
 ### Added
@@ -59,7 +70,7 @@ This project follows a Keep a Changelog-inspired format. Version numbers follow 
 
 ### Removed
 
-- Removed Concrete as a selectable surface and removed its surface-only joint rendering and runoff behavior. The shared photo used behind Steel Gate remains.
+- Removed Concrete as a selectable surface and removed its surface-only joint rendering and runoff behavior. The shared urban photo remains available to registered surfaces.
 
 ## [0.9.9] - 2026-11-08 (release candidate)
 
@@ -103,7 +114,7 @@ This project follows a Keep a Changelog-inspired format. Version numbers follow 
 
 ### Added
 
-- Added selectable Solid, Concrete and Steel Gate canvas surfaces with separate background, paint and physical-detail layers.
+- Added selectable Solid, Concrete and steel-door canvas surfaces with separate background, paint and physical-detail layers.
 - Added surface-aware runoff obstacles that stop paint at physical joints and gate thresholds.
 - Added timestamped PNG export filenames in local time.
 
@@ -111,7 +122,7 @@ This project follows a Keep a Changelog-inspired format. Version numbers follow 
 
 - Surface changes now clear paint, runoff, splatter and undo history while preserving brush and material settings.
 - Replaced procedural surface artwork with darker photographic concrete and a painted steel double gate.
-- Refined Steel Gate foreground compositing with pixel-level alpha masks for naturally edged physical details.
+- Refined fixed foreground compositing with pixel-level alpha masks for naturally edged physical details.
 
 ## [0.7.0] - 2026-11-05
 

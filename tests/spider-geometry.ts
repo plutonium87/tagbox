@@ -1,5 +1,5 @@
 import { SprayEngine, SPIDER_WEAVE_FREQUENCY } from '../src/spray';
-import { clampSpiderWeaveSpeed, DEFAULT_SPIDER_WEAVE_SPEED, MAX_SPIDER_WEAVE_SPEED, MIN_SPIDER_WEAVE_SPEED, restoreSpiderWeaveSpeed, type Point, type SprayStroke } from '../src/settings';
+import { clampSpiderWeaveRate, DEFAULT_SPIDER_WEAVE_RATE, MAX_SPIDER_WEAVE_RATE, MIN_SPIDER_WEAVE_RATE, restoreSpiderWeaveRate, type Point, type SprayStroke } from '../src/settings';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -102,9 +102,9 @@ assert(pauseAndMove.timeline.some((sample) => sample.time >= 480), 'Later statio
 assert(pauseAndMove.particles.length === pauseAndMoveReplay.particles.length, 'Pause and movement replay count should match');
 for (let i = 0; i < pauseAndMove.particles.length; i++) assert(pauseAndMove.particles[i] === pauseAndMoveReplay.particles[i], 'Pause and movement replay should be deterministic');
 
-const existingAtFive = stationaryFrequencyRun(5);
-const newAtTwenty = stationaryFrequencyRun(20);
-assert(existingAtFive.weaveFrequency === 5 && newAtTwenty.weaveFrequency === 20, 'Frequency selection should apply to each new stroke without changing existing stroke settings');
+const existingAtTen = stationaryFrequencyRun(10);
+const newAtTwentyFive = stationaryFrequencyRun(25);
+assert(existingAtTen.weaveFrequency === 10 && newAtTwentyFive.weaveFrequency === 25, 'Rate selection should apply to each new stroke without changing existing stroke settings');
 
 for (const size of [3, 240]) {
   for (const pressure of [0, 1]) {
@@ -138,21 +138,21 @@ function countReversals(stroke: SprayStroke, filament: number): number {
   }
   return reversals;
 }
-const testedSpeeds = [MIN_SPIDER_WEAVE_SPEED, 10, DEFAULT_SPIDER_WEAVE_SPEED, 35, MAX_SPIDER_WEAVE_SPEED];
-const frequencyRuns = testedSpeeds.map(stationaryFrequencyRun);
+const testedRates = [MIN_SPIDER_WEAVE_RATE, 25, DEFAULT_SPIDER_WEAVE_RATE, 75, MAX_SPIDER_WEAVE_RATE];
+const frequencyRuns = testedRates.map(stationaryFrequencyRun);
 const reversalCounts = frequencyRuns.map((stroke) => countReversals(stroke, 0));
-assert(SPIDER_WEAVE_FREQUENCY === 20 && DEFAULT_SPIDER_WEAVE_SPEED === 20, 'Default weaving speed should be 20x');
-assert(clampSpiderWeaveSpeed(2) === MIN_SPIDER_WEAVE_SPEED && clampSpiderWeaveSpeed(51) === MAX_SPIDER_WEAVE_SPEED, 'Persisted out-of-range speeds should migrate to the new limits');
-assert(restoreSpiderWeaveSpeed('2') === 5 && restoreSpiderWeaveSpeed('51') === 50, 'Persisted old-range values should restore inside the new range');
-assert(restoreSpiderWeaveSpeed('20') === DEFAULT_SPIDER_WEAVE_SPEED && restoreSpiderWeaveSpeed(null) === DEFAULT_SPIDER_WEAVE_SPEED, 'Persisted and missing default values should restore correctly');
-assert(clampSpiderWeaveSpeed(7.5) === 8, 'Weave speed should normalize to whole-number increments');
+assert(SPIDER_WEAVE_FREQUENCY === 50 && DEFAULT_SPIDER_WEAVE_RATE === 50, 'Default weave rate should be 50x');
+assert(clampSpiderWeaveRate(9) === MIN_SPIDER_WEAVE_RATE && clampSpiderWeaveRate(101) === MAX_SPIDER_WEAVE_RATE, 'Persisted out-of-range rates should migrate to the new limits');
+assert(restoreSpiderWeaveRate('9') === 10 && restoreSpiderWeaveRate('101') === 100, 'Persisted old-range values should restore inside the new range');
+assert(restoreSpiderWeaveRate('50') === DEFAULT_SPIDER_WEAVE_RATE && restoreSpiderWeaveRate(null) === DEFAULT_SPIDER_WEAVE_RATE, 'Persisted and missing default values should restore correctly');
+assert(clampSpiderWeaveRate(10.5) === 11, 'Weave rate should normalize to whole-number increments');
 assert(reversalCounts.every((count, index) => index === 0 || count > reversalCounts[index - 1]), 'Both paths should increase traversal frequency with the control value');
-assert(reversalCounts[2] >= 19, 'Default 20x should produce about twenty Filament A traversals');
+assert(reversalCounts[2] >= 49, 'Default 50x should produce about fifty Filament A traversals');
 const filamentBReversals = frequencyRuns.map((stroke) => countReversals(stroke, 1));
-assert(filamentBReversals[2] >= 16, 'Default 20x should preserve Filament B’s independent progression rate');
-for (const [runIndex, frequency] of testedSpeeds.entries()) {
+assert(filamentBReversals[2] >= 43, 'Default 50x should preserve Filament B’s independent progression rate');
+for (const [runIndex, frequency] of testedRates.entries()) {
   const stroke = frequencyRuns[runIndex];
-  assert(stroke.weaveFrequency === frequency, 'Completed stroke should retain its selected weave speed for replay');
+  assert(stroke.weaveFrequency === frequency, 'Completed stroke should retain its selected weave rate for replay');
   const replay = stationaryFrequencyRun(frequency);
   assert(stroke.particles.length === replay.particles.length, 'Frequency replay should retain its geometry count');
   for (let i = 0; i < stroke.particles.length; i++) assert(stroke.particles[i] === replay.particles[i], 'Frequency replay should be deterministic');
@@ -162,7 +162,7 @@ for (const [runIndex, frequency] of testedSpeeds.entries()) {
       if (stroke.timeline[index].filament !== filament) continue;
       if (previousIndex >= 0) {
         const gap = Math.hypot(stroke.particles[index * 4] - stroke.particles[previousIndex * 4], stroke.particles[index * 4 + 1] - stroke.particles[previousIndex * 4 + 1]);
-        assert(gap <= 9.1, `Frequency ${frequency} must preserve connected segment overlap`);
+        assert(gap <= 9.1, `Rate ${frequency} must preserve connected segment overlap`);
       }
       previousIndex = index;
     }

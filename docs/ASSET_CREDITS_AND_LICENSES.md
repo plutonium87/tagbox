@@ -24,7 +24,7 @@ This document tracks third-party assets used in Tagbox. Paths below are relative
 ### Night City Side Street
 
 - **Local file:** `public/audio/ambience/jadeallencook-night-city-side-street-with-passing-cars-and-distant-urban-ambience-339223.mp3`
-- **Used by:** Store front surface & Steel gate surface
+- **Used by:** Store front and Delivery Truck surfaces
 - **Logical audio identifier:** `urban`
 - **Original title:** Night City Side Street with Passing Cars and Distant Urban Ambience
 - **Creator:** jadeallencook

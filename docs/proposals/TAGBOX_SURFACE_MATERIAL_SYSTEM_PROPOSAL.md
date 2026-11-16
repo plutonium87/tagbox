@@ -10,7 +10,7 @@ This is an architecture study only. **Verified** statements below describe the c
 
 - `src/surfaces.ts` loads custom surfaces registered in `/surfaces/manifest.json`. Each surface has a `surface.json`, positive logical `width`/`height`, required background, and optional foreground and paint mask. Paths resolve relative to `surface.json`.
 - Background, foreground, and paint mask use the same `fit` transform (`stretch` by default, `contain`, or `cover`). Paint masks are rasterized to the surface's logical dimensions before use.
-- The Norrtåg and City park surfaces are 3240×1080 in their current JSON configurations. Built-in Solid and Steel Gate use 1920×1080. Viewport/DPR scaling is separate from logical drawing coordinates; PNG export uses the active logical dimensions.
+- The Norrtåg and City park surfaces are 3240×1080 in their current JSON configurations. Solid and the registered Steel Doors surface use 1920×1080. Viewport/DPR scaling is separate from logical drawing coordinates; PNG export uses the active logical dimensions.
 - `CustomSurfaceDefinition.maps` exists as a compatibility field, but `maps` entries are not loaded or consumed. The surface asset README explicitly says there is no separate paint-opacity map and that roughness/normal maps are not implemented.
 - Missing or failed optional paint masks result in unrestricted paint. A custom surface with an absent or failed material map should follow an analogous fallback, but material handling does not currently exist.
 
@@ -102,7 +102,7 @@ The output framebuffer remains at canvas backing dimensions. Material-map memory
 - Unknown ID: use an explicit neutral default profile, never infer a profile from numeric closeness.
 - Paintability remains authoritative: blocked mask pixels remain blocked regardless of their material ID. Effective deposition is paintability × material response; material maps cannot grant permission to paint. Foreground alpha remains folded only into paintability according to current configuration.
 - Paint opacity remains a distinct future input. A material multiplier must not be silently described as an opacity map.
-- Existing Marker, Spray, Chrome, undo, clear, and PNG behavior remain unchanged for surfaces without a map. With a map, intentional behavior changes are limited to configured profile effects. Solid and Steel Gate currently have no custom surface JSON; Norrtåg and City park do, but none of the current surfaces configure material maps.
+- Existing Marker, Spray, Chrome, undo, clear, and PNG behavior remain unchanged for surfaces without a map. With a map, intentional behavior changes are limited to configured profile effects. Solid has no custom surface JSON; Steel Doors is registered as a custom surface; Norrtåg and City park do, but none of the current surfaces configure material maps.
 - Different logical dimensions are supported by the same coordinate transform used for paintability. Material map source dimensions may differ; the loader should align it to logical dimensions with categorical nearest resampling, not the paint-mask builder's smoothing-enabled path.
 
 ## 7. Phased implementation plan

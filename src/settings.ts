@@ -24,18 +24,18 @@ export function clampSpraySize(size: number): number {
   return Math.max(MIN_SPRAY_SIZE, Math.min(MAX_SPRAY_SIZE, Number.isFinite(size) ? size : MIN_SPRAY_SIZE));
 }
 
-export const MIN_SPIDER_WEAVE_SPEED = 5;
-export const MAX_SPIDER_WEAVE_SPEED = 50;
-export const DEFAULT_SPIDER_WEAVE_SPEED = 20;
-export function clampSpiderWeaveSpeed(speed: number): number {
-  const normalized = Number.isFinite(speed) ? Math.round(speed) : DEFAULT_SPIDER_WEAVE_SPEED;
-  return Math.max(MIN_SPIDER_WEAVE_SPEED, Math.min(MAX_SPIDER_WEAVE_SPEED, normalized));
+export const MIN_SPIDER_WEAVE_RATE = 10;
+export const MAX_SPIDER_WEAVE_RATE = 100;
+export const DEFAULT_SPIDER_WEAVE_RATE = 50;
+export function clampSpiderWeaveRate(rate: number): number {
+  const normalized = Number.isFinite(rate) ? Math.round(rate) : DEFAULT_SPIDER_WEAVE_RATE;
+  return Math.max(MIN_SPIDER_WEAVE_RATE, Math.min(MAX_SPIDER_WEAVE_RATE, normalized));
 }
-export function restoreSpiderWeaveSpeed(value: string | null): number {
-  if (value === null || value.trim() === '' || !Number.isFinite(Number(value))) return DEFAULT_SPIDER_WEAVE_SPEED;
-  return clampSpiderWeaveSpeed(Number(value));
+export function restoreSpiderWeaveRate(value: string | null): number {
+  if (value === null || value.trim() === '' || !Number.isFinite(Number(value))) return DEFAULT_SPIDER_WEAVE_RATE;
+  return clampSpiderWeaveRate(Number(value));
 }
 
 export const settings: BrushSettings & { shape: BrushShape; rotationDegrees: number; splatterEnabled: boolean } = { size: 10, color: '#ffffff', material: 'paint', smoothing: 0.5, wetness: 0.68, intensity: 0.58, shape: 'round', rotationDegrees: 0, splatterEnabled: true };
-export const spraySettings = { size: 96, pressure: 0.55, smoothing: 0.45, material: 'paint' as Material, nozzle: 'standard' as SprayNozzle, rotationDegrees: 0, weaveSpeed: DEFAULT_SPIDER_WEAVE_SPEED };
+export const spraySettings = { size: 96, pressure: 0.55, smoothing: 0.45, material: 'paint' as Material, nozzle: 'standard' as SprayNozzle, rotationDegrees: 0, weaveRate: DEFAULT_SPIDER_WEAVE_RATE };
 export const eraserSettings = { size: 28 };

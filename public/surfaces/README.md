@@ -38,10 +38,10 @@ Example configuration:
 
 - **Background:** required environment or base surface image, drawn beneath paint.
 - **Paint:** Marker and Spray deposits share the configured logical coordinate system. Marker runoff is rendered into the paint result.
-- **Foreground:** optional transparent artwork. Custom surface foregrounds render beneath paint so masked artwork can be painted over. The built-in Steel Gate detail layer remains above paint.
+- **Foreground:** optional transparent artwork. Custom surface foregrounds render beneath paint by default; set `foregroundAbovePaint` for fixed details that must stay above paint.
 - **Paint mask:** optional restriction and opacity field for Marker, Spray and runoff deposition.
 
-The built-in Solid and Steel Gate surfaces use 1920×1080. Norrtåg, City Park, Industrial and Delivery Truck are registered at 3240×1080. Custom foregrounds use the same layer order in the main canvas, Navigator and PNG export. Norrtåg's background is the environment image, its foreground is the transparent train image, and its grayscale paint mask is multiplied by train alpha. Delivery Truck uses an authored grayscale mask that already defines paintability, including its glass and environment regions.
+The built-in Solid surface uses 1920×1080. Steel Doors is registered as a 1920×1080 custom surface. Norrtåg, City Park, Industrial and Delivery Truck are registered at 3240×1080. Custom foregrounds use the same layer order in the main canvas, Navigator and PNG export. Norrtåg's background is the environment image, its foreground is the transparent train image, and its grayscale paint mask is multiplied by train alpha. Delivery Truck uses an authored grayscale mask that already defines paintability, including its glass and environment regions.
 
 The fit option applies to background, foreground and paint mask: stretch (default) fills the configured dimensions; contain preserves the image ratio inside those bounds; cover preserves the ratio while filling and cropping to those bounds. Optional material maps use the same logical coordinates as the configured artwork and are sampled only while paint is deposited. Use native-sized, aligned files with the default fit when the source layers already match the configured dimensions.
 
@@ -55,13 +55,14 @@ There is no separate paint-opacity-map input. Grayscale paint opacity is impleme
 
 ## Registered custom surfaces
 
-The manifest registers Norrtåg, City Park, Store front, Industrial and Delivery Truck. Their current configurations are:
+The manifest registers Norrtåg, City Park, Store front, Industrial, Delivery Truck and Steel Doors. Their current configurations are:
 
 - **Norrtåg:** 3240×1080; `norrtag_bg2.png` background, `norrtag_v3.png` foreground, and `norrtag_v3-paintmask.png` grayscale paint mask multiplied by foreground alpha. Uses Railway ambience.
 - **City Park:** 3240×1080; `stone_wall__bg_3240x1080.png` background, `stone_wall_3240x1080.png` foreground, and `stone_wall_paintmask_3240x1080.png` grayscale paint mask. Uses park ambience.
 - **Store front:** 1920×1080 with matching artwork and grayscale paint mask. Uses urban ambience.
 - **Industrial:** 3240×1080 with matching artwork and grayscale paint mask, plus an aligned AO map sampled by paint shaders. Uses industrial ambience.
 - **Delivery Truck:** 3240×1080 with a night-street background, transparent truck foreground and authored grayscale paint mask. Uses urban ambience.
+- **Steel Doors:** 1920×1080 with aligned background, fixed handle foreground and authored grayscale paint mask. Uses City Park ambience.
 
 Selector previews are stored as `public/surfaces/<id>-thumbnail.png`. They composite the configured background and foreground, then fit the complete scene into a 352×198 preview tile.
 

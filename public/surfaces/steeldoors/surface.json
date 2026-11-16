@@ -1,0 +1,13 @@
+{
+  "id": "steeldoors",
+  "name": "Steel Doors",
+  "width": 1920,
+  "height": 1080,
+  "background": "steeldoors_1920x1080.png",
+  "foreground": "steeldoors_fg_1920x1080.png",
+  "foregroundAbovePaint": true,
+  "paintMask": "steeldoors_paintmask_1920x1080.png",
+  "paintMaskMode": "grayscale",
+  "fit": "stretch",
+  "ambience": "/audio/ambience/citypark.mp3"
+}

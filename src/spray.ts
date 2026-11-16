@@ -1,11 +1,11 @@
 import { PointerFilter, StrokeInterpolator } from './smoothing';
-import { DEFAULT_SPIDER_WEAVE_SPEED, clampSpiderWeaveSpeed, type Material, type Point, type SprayNozzle, type SprayStroke } from './settings';
+import { DEFAULT_SPIDER_WEAVE_RATE, clampSpiderWeaveRate, type Material, type Point, type SprayNozzle, type SprayStroke } from './settings';
 
 const PARTICLE_STRIDE = 4;
 const MAX_SAMPLES_PER_STROKE = 20_000;
 const MAX_DEPOSITS_PER_STROKE = 20_000;
 const SPIDER_TICK_MS = 16;
-export const SPIDER_WEAVE_FREQUENCY = DEFAULT_SPIDER_WEAVE_SPEED;
+export const SPIDER_WEAVE_FREQUENCY = DEFAULT_SPIDER_WEAVE_RATE;
 
 /** Generates deterministic spray deposits and Spider's resampled filament path. */
 export class SprayEngine {
@@ -29,7 +29,7 @@ export class SprayEngine {
   ) {}
 
   begin(point: Point, time: number, size: number, color: string, smoothing: number, pressure: number, material: Material = 'paint', nozzle: SprayNozzle = 'standard', rotation = 0, weaveFrequency = this.defaultSpiderWeaveFrequency): void {
-    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveSpeed(weaveFrequency) };
+    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveRate(weaveFrequency) };
     this.depositCount = 0;
     this.spiderPreviousFilaments = [null, null];
     this.spiderInputs = [{ time, point: { ...point } }];

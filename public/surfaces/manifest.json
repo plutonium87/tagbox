@@ -1,3 +1,10 @@
 {
-  "surfaces": ["norrtag", "citypark", "storefront", "industrial", "deliverytruck"]
+  "surfaces": [
+    "norrtag",
+    "citypark",
+    "storefront",
+    "industrial",
+    "deliverytruck",
+    "steeldoors"
+  ]
 }
