@@ -58,13 +58,45 @@ function pauseMovePause(): SprayStroke {
 const transition = pauseMovePause();
 assert(transition.timeline.some((sample) => sample.speed === 0 && sample.time < 96), 'Initial stationary deposition should continue before movement');
 assert(transition.timeline.some((sample) => sample.speed! > 0 && sample.time >= 96 && sample.time <= 192), 'Movement should continue the same time grid and record speed');
-const movingSample = transition.timeline.find((sample) => sample.time === 208)!;
+const movingSample = transition.timeline.filter((sample) => sample.speed! > 0 && sample.time >= 96 && sample.time <= 192).at(-1)!;
 assert(transition.timeline.at(-1)!.speed! < movingSample.speed!, 'Returning to stationary input should smoothly reduce the filtered speed');
 assert(transition.timeline.at(-1)!.deposition! > movingSample.deposition!, 'Deposition should recover as the pointer slows to a stop');
 assert(transition.timeline.some((sample) => sample.speed! > 0 && sample.time >= 384 && sample.time <= 480), 'Movement should resume within the same active stroke');
 const transitionTimes = [...new Set(transition.timeline.map((sample) => sample.time))];
-assert(transitionTimes.every((time, index) => index === 0 || time - transitionTimes[index - 1] === 16), 'Stationary and moving phases should share one uninterrupted time grid');
+assert(transitionTimes.every((time, index) => index === 0 || time > transitionTimes[index - 1]), 'Samples should remain ordered across moving and stationary phases');
+assert(transitionTimes.some((time, index) => index > 0 && time - transitionTimes[index - 1] > 16), 'Brief pauses should not create repeated deposition samples before stationary state is confirmed');
 assert(transition.timeline.every((sample, index) => index === 0 || sample.phase! > transition.timeline[index - 1].phase!), 'Movement transitions must not reset procedural phase');
+
+function runMotion(points: Point[]): SprayStroke {
+  const engine = new SprayEngine(() => {});
+  engine.begin(points[0], 0, 96, '#fff', 0, 1, 'paint', 'hollow-cone');
+  for (let index = 1; index < points.length; index++) engine.move(points[index], index * 16);
+  return engine.end((points.length - 1) * 16)!;
+}
+const constantSpeed = runMotion(Array.from({ length: 50 }, (_, index) => ({ x: 100 + index * 4, y: 100 })));
+const settledSamples = constantSpeed.timeline.filter((sample) => sample.time >= 320 && sample.time <= 640);
+assert(settledSamples.length > 10, 'Constant-speed movement should continue depositing after the speed filter settles');
+assert(Math.max(...settledSamples.map((sample) => sample.speed!)) - Math.min(...settledSamples.map((sample) => sample.speed!)) < 8, 'Constant-speed movement should have a stable filtered speed estimate');
+assert(Math.max(...settledSamples.map((sample) => sample.deposition!)) - Math.min(...settledSamples.map((sample) => sample.deposition!)) < 0.04, 'Constant-speed movement should have stable deposition after settling');
+
+const decelerationPoints: Point[] = [{ x: 100, y: 100 }];
+for (let index = 1; index <= 30; index++) {
+  const previous = decelerationPoints.at(-1)!;
+  decelerationPoints.push({ x: previous.x + (index === 16 ? 0 : 4), y: 100 });
+}
+const deceleration = runMotion(decelerationPoints);
+const movingDeposition = deceleration.timeline.filter((sample) => sample.time >= 160 && sample.time <= 240).map((sample) => sample.deposition!);
+assert(movingDeposition.length > 5, 'The stroke should keep depositing through a brief deceleration and recovery');
+assert(Math.max(...movingDeposition) < Math.min(...movingDeposition) * 1.45, 'A single brief pause must not create an isolated deposition spike');
+const transitionSpeeds = deceleration.timeline.filter((sample) => sample.time >= 128 && sample.time <= 320).map((sample) => sample.speed!);
+assert(transitionSpeeds.every((speed, index) => index === 0 || Math.abs(speed - transitionSpeeds[index - 1]) < 130), 'Acceleration and deceleration should change the filtered speed smoothly');
+
+const curvePoints: Point[] = [{ x: 100, y: 100 }];
+for (let index = 1; index <= 36; index++) curvePoints.push({ x: 100 + index * 3, y: 100 + Math.sin(index / 4) * 7 + (index % 9 === 0 ? 0.3 : 0) });
+const curve = runMotion(curvePoints);
+assert(curve.timeline.length > 20 && curve.timeline.every((sample) => Number.isFinite(sample.speed) && Number.isFinite(sample.deposition)), 'Curves and small corrections should keep a finite, continuous deposition estimate');
+assert(hollowConeExposure(1, 96, 350) > 1.15 && hollowConeExposure(1, 96, 900) > 0.9, 'Full Pressure should give more practical coverage at normal and fast moving speeds');
+assert(hollowConeExposure(1, 96, 350) > hollowConeExposure(0.5, 96, 350) * 1.7, 'The moving coverage adjustment should preserve the Pressure difference');
 
 const slow = runPath(8, 1200)!;
 const fast = runPath(8, 240)!;

@@ -35,7 +35,7 @@ Project version: **1.3.0**.
 ### Spray
 
 - Spray Size: 3–240 px (default 96 px).
-- Standard (Hollow Cone) is the default nozzle and replaces the former Standard implementation. It combines an adjustable center spot, weaker inner region, concentrated outer ring and soft overspray. Pressure affects ring character and paint accumulation; slower movement deposits more paint per distance, faster movement leaves thinner streaks, and stationary spraying keeps building coverage. Spray Size scales the circular footprint. The nozzle selector uses small visual icons for Hollow Cone, Calligraphy and Spider.
+- Standard (Hollow Cone) is the default nozzle and replaces the former Standard implementation. It combines an adjustable center spot, weaker inner region, concentrated outer ring and soft overspray. Pressure affects ring character and paint accumulation; slower movement deposits more paint per distance, faster movement leaves thinner streaks, and stationary spraying keeps building coverage. Movement speed and dose changes are smoothed so brief pauses do not cause sudden paint buildup; a sustained hold transitions back to time-based stationary deposition. Spray Size scales the circular footprint. The nozzle selector uses small visual icons for Hollow Cone, Calligraphy and Spider.
 - Calligraphy uses a narrow oval spray. Spider lays two continuous, independently weaving filaments in a rectangular footprint. Both support 0°–360° rotation using the graphical dial.
 - Spider Weave Rate: 10×–100× (default 50×), saved in this browser and applied to new strokes.
 - Smoothing: 0%–100% (default 45%); Pressure: 0%–100% (default 55%).

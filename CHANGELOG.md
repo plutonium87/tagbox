@@ -21,6 +21,7 @@ This project follows a Keep a Changelog-inspired format. Version numbers follow 
 
 - Improved continuity when a stroke transitions between movement and stationary spraying, resumes movement, or finishes or is cancelled.
 - Stabilized incremental Hollow Cone rendering and deterministic replay across pointer sampling frequencies, including undo/redo and export rendering paths.
+- Filtered movement speed and dose changes to prevent brief pauses from causing isolated dark spots, while retaining time-based deposition after a sustained stationary hold.
 
 ## [1.2.0] - 2026-11-16
 

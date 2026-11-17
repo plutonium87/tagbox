@@ -9,6 +9,10 @@ const SPIDER_TICK_MS = 16;
 const HOLLOW_CONE_TICK_MS = 16;
 const HOLLOW_SPEED_SCALE = 850;
 const HOLLOW_SPATIAL_STEP = 2;
+const HOLLOW_STATIONARY_DELAY_MS = 80;
+const HOLLOW_SPEED_FILTER_MS = 72;
+const HOLLOW_DOSE_FILTER_MS = 96;
+const HOLLOW_STILL_DISTANCE = 0.08;
 export const HOLLOW_CONE_CENTER_STRENGTH = 1;
 
 export function hollowConeExposure(pressure: number, size: number, speed: number): number {
@@ -17,7 +21,8 @@ export function hollowConeExposure(pressure: number, size: number, speed: number
   const sizeRate = Math.max(0.62, Math.min(1.75, Math.sqrt(96 / Math.max(3, size))));
   const smallSizeWeight = 1 - smoothstep(3, 86, size);
   const smallSizeBoost = 1 + 0.15 * p * p * smallSizeWeight;
-  return Math.max(0.02, Math.min(2, pressureRate * sizeRate * smallSizeBoost * hollowConeSpeedRate(speed)));
+  const movingCoverage = speed > 0 ? 1 + 0.18 * Math.pow(p, 3) * speed / (speed + 300) : 1;
+  return Math.max(0.02, Math.min(2, pressureRate * sizeRate * smallSizeBoost * hollowConeSpeedRate(speed) * movingCoverage));
 }
 
 export function hollowConeSpeedRate(speed: number): number {
@@ -81,6 +86,9 @@ export class SprayEngine {
   private hollowNextTick = 0;
   private hollowCenter: Point | null = null;
   private hollowSpeed = 0;
+  private hollowDose = 0;
+  private hollowStationary = true;
+  private hollowStillSince: number | null = null;
 
   constructor(
     private readonly onChange: (stroke: SprayStroke, newParticles: Float32Array) => void,
@@ -106,6 +114,9 @@ export class SprayEngine {
     this.hollowNextTick = time + HOLLOW_CONE_TICK_MS;
     this.hollowCenter = { ...point };
     this.hollowSpeed = 0;
+    this.hollowDose = hollowConeExposure(pressure, size, 0);
+    this.hollowStationary = true;
+    this.hollowStillSince = null;
     this.buffer = new Float32Array(0);
     this.filter = new PointerFilter(smoothing);
     // Calligraphy's narrow axis is only 18% of its diameter and its dabs fade
@@ -168,6 +179,9 @@ export class SprayEngine {
     this.spiderInputs = [];
     this.hollowInputs = [];
     this.hollowCenter = null;
+    this.hollowDose = 0;
+    this.hollowSpeed = 0;
+    this.hollowStillSince = null;
     this.buffer = new Float32Array(0);
     this.depositCount = 0;
     this.onChange(completed, new Float32Array(0));
@@ -183,6 +197,9 @@ export class SprayEngine {
     this.spiderInputs = [];
     this.hollowCenter = null;
     this.hollowInputs = [];
+    this.hollowDose = 0;
+    this.hollowSpeed = 0;
+    this.hollowStillSince = null;
     this.buffer = new Float32Array(0);
     this.depositCount = 0;
   }
@@ -205,18 +222,35 @@ export class SprayEngine {
     if (!this.active || !this.hollowCenter) return;
     const next = this.positionAtInputs(this.hollowInputs, time, this.hollowCenter);
     const elapsed = Math.max(1, time - this.hollowSimulationTime);
-    const speed = Math.hypot(next.x - this.hollowCenter.x, next.y - this.hollowCenter.y) / elapsed * 1000;
-    this.hollowSpeed += (speed - this.hollowSpeed) * (1 - Math.exp(-elapsed / 72));
     const distance = Math.hypot(next.x - this.hollowCenter.x, next.y - this.hollowCenter.y);
+    const rawSpeed = distance / elapsed * 1000;
+    this.hollowSpeed += (rawSpeed - this.hollowSpeed) * (1 - Math.exp(-elapsed / HOLLOW_SPEED_FILTER_MS));
+    if (distance > HOLLOW_STILL_DISTANCE) {
+      this.hollowStationary = false;
+      this.hollowStillSince = null;
+    } else if (!this.hollowStationary) {
+      this.hollowStillSince ??= this.hollowSimulationTime;
+      if (time - this.hollowStillSince >= HOLLOW_STATIONARY_DELAY_MS) this.hollowStationary = true;
+    }
+    const targetDose = hollowConeExposure(this.active.pressure, this.active.size, this.hollowStationary ? 0 : this.hollowSpeed);
+    this.hollowDose += (targetDose - this.hollowDose) * (1 - Math.exp(-elapsed / HOLLOW_DOSE_FILTER_MS));
+    // Ignore subpixel jitter while movement is still active. A brief pause should
+    // not turn into repeated dabs; stationary deposition begins after the hold delay.
+    if (!this.hollowStationary && distance <= HOLLOW_STILL_DISTANCE) {
+      this.hollowCenter = next;
+      this.hollowSimulationTime = time;
+      this.hollowNextTick = time + HOLLOW_CONE_TICK_MS;
+      return;
+    }
     const steps = Math.max(1, Math.ceil(distance / HOLLOW_SPATIAL_STEP));
-    const deposition = hollowConeExposure(this.active.pressure, this.active.size, this.hollowSpeed) / steps;
+    const deposition = this.hollowDose / steps;
     for (let step = 1; step <= steps && this.depositCount < MAX_HOLLOW_DEPOSITS_PER_STROKE; step++) {
       const t = step / steps;
       const point = { x: this.hollowCenter.x + (next.x - this.hollowCenter.x) * t, y: this.hollowCenter.y + (next.y - this.hollowCenter.y) * t };
       const sampleOrdinal = this.active.timeline.length + 1;
       const phase = sampleOrdinal * 0.37;
       this.active.points.push(point);
-      this.active.timeline.push({ time, point, filament: 0, weaveFrequency: this.active.weaveFrequency, speed: this.hollowSpeed, deposition, phase });
+      this.active.timeline.push({ time, point, filament: 0, weaveFrequency: this.active.weaveFrequency, speed: this.hollowStationary ? 0 : this.hollowSpeed, deposition, phase });
       this.pushParticle(point.x, point.y, this.active.size + phase, deposition);
     }
     this.hollowCenter = next;
