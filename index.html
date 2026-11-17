@@ -82,9 +82,15 @@
             <div class="tool-group">
               <div class="control-label"><span class="shape-label">Spray nozzle</span></div>
               <div class="spray-nozzle-picker" role="group" aria-label="Spray nozzle">
-                <button class="spray-nozzle-option active" type="button" data-nozzle="standard" aria-pressed="true">Standard</button>
-                <button class="spray-nozzle-option" type="button" data-nozzle="calligraphy" aria-pressed="false">Calligraphy</button>
-                <button class="spray-nozzle-option" type="button" data-nozzle="spider" aria-pressed="false">Spider</button>
+                <button class="spray-nozzle-option active" type="button" data-nozzle="hollow-cone" aria-label="Standard (Hollow Cone) nozzle" aria-pressed="true" title="Standard (Hollow Cone): concentrated circular ring with a soft halo and center deposition">
+                  <svg class="spray-nozzle-icon" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="currentColor" stroke-opacity=".85" stroke-width="3"/><circle cx="16" cy="16" r="2.2" fill="currentColor"/></svg><span>Standard</span>
+                </button>
+                <button class="spray-nozzle-option" type="button" data-nozzle="calligraphy" aria-label="Calligraphy oval spray nozzle" aria-pressed="false" title="Calligraphy: elongated oval spray footprint">
+                  <svg class="spray-nozzle-icon" viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="16" rx="13" ry="6" fill="currentColor" fill-opacity=".15"/><ellipse cx="16" cy="16" rx="9.5" ry="3.4" fill="none" stroke="currentColor" stroke-opacity=".9" stroke-width="2.5"/><ellipse cx="16" cy="16" rx="4" ry="1.5" fill="currentColor" fill-opacity=".55"/></svg><span>Calligraphy</span>
+                </button>
+                <button class="spray-nozzle-option" type="button" data-nozzle="spider" aria-label="Spider twin weaving filament nozzle" aria-pressed="false" title="Spider: two continuous, independently weaving filaments">
+                  <svg class="spray-nozzle-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M4 7C25 7 7 25 28 25" fill="none" stroke="currentColor" stroke-opacity=".95" stroke-width="2" stroke-linecap="round"/><path d="M4 25C25 25 7 7 28 7" fill="none" stroke="currentColor" stroke-opacity=".58" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="7" r="1.5" fill="currentColor"/><circle cx="28" cy="25" r="1.5" fill="currentColor"/></svg><span>Spider</span>
+                </button>
               </div>
             </div>
             <div id="spray-rotation-group" class="tool-group rotation-group" hidden>
@@ -148,7 +154,7 @@
           <ul>
             <li>Choose Marker, Spray or Erase, then drag on the canvas. Hold Shift and click to set a straight-line start, move to preview, then click to commit. Press Escape to cancel.</li>
             <li>Marker tips: Round, Square, Chisel and Split Chisel. Adjust size, smoothing, Paint Load, Run Intensity and Paint Splatter.</li>
-            <li>Spray nozzles: Standard, Calligraphy and Spider. Adjust size, smoothing and pressure; Calligraphy and Spider support nozzle rotation. Spider also has an adjustable, saved Weave Rate.</li>
+            <li>Spray nozzles: Standard (Hollow Cone) creates a soft circular halo, concentrated outer ring and center spot; Calligraphy creates an elongated oval; Spider draws two independently weaving filaments. Spray Size controls footprint scale, Pressure controls deposition strength, and faster movement leaves thinner streaks. The illustrated nozzle buttons show the selected pattern; Calligraphy and Spider support nozzle rotation. Spider also has a saved Weave Rate.</li>
             <li>Choose a paint color or Silver, Copper or Gold Chrome. The surface picker offers Solid, Steel Doors, Norrtåg, City Park, Store front, Industrial and Delivery Truck.</li>
           </ul>
         </section>

@@ -6,7 +6,7 @@ import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
 import { pointerPosition, CanvasRenderer } from './renderer';
 import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface } from './surfaces';
-import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveRate, restoreSpiderWeaveRate, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
+import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveRate, restoreSpiderWeaveRate, restoreSprayNozzle, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
 const runoffCanvas = document.querySelector<HTMLCanvasElement>('#runoff-canvas')!;
@@ -124,6 +124,7 @@ const shapeRotations: Record<'square' | 'chisel' | 'split-chisel', number> = { s
 let isDrawing = false;
 let holdTimer = 0;
 let spiderTimer = 0;
+let hollowConeTimer = 0;
 let activePointerId: number | null = null;
 let activePointerType: string | null = null;
 let activePointerPoint: Point | null = null;
@@ -473,6 +474,7 @@ function startStroke(event: PointerEvent, initialEvent = event): void {
     spraySettings.size = clampSpraySize(spraySettings.size);
     spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
     if (spraySettings.nozzle === 'spider') spiderTimer = window.setInterval(() => spray.tick(performance.now()), 16);
+    if (spraySettings.nozzle === 'hollow-cone') hollowConeTimer = window.setInterval(() => spray.tick(performance.now()), 16);
     audio.startSpray();
   }
   holdTimer = window.setInterval(() => { if (isDrawing && (strokeTool === 'marker' || strokeTool === 'erase')) brush.hold(); }, 60);
@@ -535,8 +537,9 @@ function cancelStroke(): void {
   window.clearInterval(holdTimer);
   if (strokeTool === 'marker') { brush.end(); renderer.setActive(null); }
   else if (strokeTool === 'erase') { brush.end(); renderer.setActiveErase(null); }
-  else if (strokeTool === 'spray') { spray.end(performance.now()); renderer.setActiveSpray(null); audio.endSpray(); }
+  else if (strokeTool === 'spray') { spray.cancel(); renderer.setActiveSpray(null); audio.endSpray(); }
   window.clearInterval(spiderTimer); spiderTimer = 0;
+  window.clearInterval(hollowConeTimer); hollowConeTimer = 0;
   strokeTool = null;
   renderer.setOperations(operations);
   requestNavigatorRender();
@@ -681,6 +684,7 @@ function finishStroke(event?: PointerEvent): void {
   activePointerPoint = null;
   window.clearInterval(holdTimer);
   window.clearInterval(spiderTimer); spiderTimer = 0;
+  window.clearInterval(hollowConeTimer); hollowConeTimer = 0;
   if (strokeTool === 'marker' || strokeTool === 'erase') {
     const stroke = brush.end();
     if (stroke) { const operation: PaintOperation = { kind: strokeTool, stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
@@ -944,10 +948,20 @@ spiderWeaveInput.addEventListener('input', () => {
   spiderWeaveValue.textContent = `${spraySettings.weaveRate}x`;
   try { localStorage.setItem(spiderWeaveRateKey, String(spraySettings.weaveRate)); } catch { /* The current session still uses the selected rate. */ }
 });
+const sprayNozzleKey = 'tagbox.spray-nozzle';
+try { spraySettings.nozzle = restoreSprayNozzle(localStorage.getItem(sprayNozzleKey)); } catch { /* Use the new Hollow Cone default when storage is unavailable. */ }
+document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((option) => {
+  const selected = option.dataset.nozzle === spraySettings.nozzle;
+  option.classList.toggle('active', selected);
+  option.setAttribute('aria-pressed', String(selected));
+});
+sprayRotationGroup.hidden = spraySettings.nozzle !== 'calligraphy' && spraySettings.nozzle !== 'spider';
+spiderWeaveGroup.hidden = spraySettings.nozzle !== 'spider';
 document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((button) => button.addEventListener('click', () => {
-  if (button.dataset.nozzle !== 'standard' && button.dataset.nozzle !== 'calligraphy' && button.dataset.nozzle !== 'spider') return;
+  if (button.dataset.nozzle !== 'hollow-cone' && button.dataset.nozzle !== 'calligraphy' && button.dataset.nozzle !== 'spider') return;
   const changed = spraySettings.nozzle !== button.dataset.nozzle;
   spraySettings.nozzle = button.dataset.nozzle;
+  try { localStorage.setItem(sprayNozzleKey, spraySettings.nozzle); } catch { /* The current session still uses the selected nozzle. */ }
   if (changed) audio.playCapChange();
   sprayRotationGroup.hidden = spraySettings.nozzle !== 'calligraphy' && spraySettings.nozzle !== 'spider';
   spiderWeaveGroup.hidden = spraySettings.nozzle !== 'spider';

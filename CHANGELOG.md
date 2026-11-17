@@ -2,6 +2,26 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.3.0] - 2026-11-17
+
+### Added
+
+- Added the illustrated Spray nozzle selector with distinct Hollow Cone, Calligraphy oval and twin-filament Spider icons, accessible labels and tooltips.
+- Added deterministic organic variation to the Hollow Cone center deposition and outer concentration ring.
+- Added a central deposition component with independently adjustable model strength.
+
+### Changed
+
+- Promoted Hollow Cone to the default Standard Spray nozzle and replaced the former Standard rendering and deposition behavior. Existing `standard` preference and stroke identifiers are routed to Hollow Cone for compatibility.
+- Added continuous time-based Hollow Cone deposition while stationary, with a shared timeline for stationary and moving input and interpolated movement samples.
+- Improved pressure, movement-speed and small-size deposition response while retaining the Hollow Cone ring, inner falloff and diffuse overspray.
+- Persisted Spray nozzle selection and migrate saved Standard selections to Hollow Cone.
+
+### Fixed
+
+- Improved continuity when a stroke transitions between movement and stationary spraying, resumes movement, or finishes or is cancelled.
+- Stabilized incremental Hollow Cone rendering and deterministic replay across pointer sampling frequencies, including undo/redo and export rendering paths.
+
 ## [1.2.0] - 2026-11-16
 
 ### Added

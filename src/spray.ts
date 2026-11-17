@@ -4,7 +4,61 @@ import { DEFAULT_SPIDER_WEAVE_RATE, clampSpiderWeaveRate, type Material, type Po
 const PARTICLE_STRIDE = 4;
 const MAX_SAMPLES_PER_STROKE = 20_000;
 const MAX_DEPOSITS_PER_STROKE = 20_000;
+const MAX_HOLLOW_DEPOSITS_PER_STROKE = 100_000;
 const SPIDER_TICK_MS = 16;
+const HOLLOW_CONE_TICK_MS = 16;
+const HOLLOW_SPEED_SCALE = 850;
+const HOLLOW_SPATIAL_STEP = 2;
+export const HOLLOW_CONE_CENTER_STRENGTH = 1;
+
+export function hollowConeExposure(pressure: number, size: number, speed: number): number {
+  const p = Math.max(0, Math.min(1, pressure));
+  const pressureRate = 0.35 + 1.0 * Math.pow(p, 1.8);
+  const sizeRate = Math.max(0.62, Math.min(1.75, Math.sqrt(96 / Math.max(3, size))));
+  const smallSizeWeight = 1 - smoothstep(3, 86, size);
+  const smallSizeBoost = 1 + 0.15 * p * p * smallSizeWeight;
+  return Math.max(0.02, Math.min(2, pressureRate * sizeRate * smallSizeBoost * hollowConeSpeedRate(speed)));
+}
+
+export function hollowConeSpeedRate(speed: number): number {
+  return 0.3 + 0.7 / (1 + Math.pow(Math.max(0, speed) / HOLLOW_SPEED_SCALE, 1.1));
+}
+
+export function hollowConeRingWidth(size: number, pressure: number, deposition: number): number {
+  const p = Math.max(0, Math.min(1, pressure));
+  const d = Math.max(0, Math.min(2, deposition));
+  return size * (0.055 + 0.085 * p) * (0.68 + 0.32 * d);
+}
+
+export function hollowConeOrganicVariation(angle: number, phase: number, seed: number): { centerX: number; centerY: number; ringRadiusOffset: number; ringIntensity: number } {
+  return {
+    centerX: Math.sin(phase * 0.18 + seed) * 0.0127,
+    centerY: Math.cos(phase * 0.14 + seed * 1.7) * 0.0127,
+    ringRadiusOffset: Math.sin(angle * 3 + phase * 0.15 + seed) * 0.012 + Math.sin(angle * 5 - phase * 0.09 + seed * 2) * 0.006,
+    ringIntensity: 0.93 + 0.045 * Math.sin(angle * 4 + phase * 0.12 + seed) + 0.025 * Math.sin(angle * 7 - phase * 0.07 + seed * 2),
+  };
+}
+
+export function hollowConeRadialDensity(radius: number, pressure: number, deposition: number, centerStrength = HOLLOW_CONE_CENTER_STRENGTH): number {
+  if (radius < 0 || radius > 1) return 0;
+  const p = Math.max(0, Math.min(1, pressure));
+  const d = Math.max(0, Math.min(2, deposition));
+  const ringRadius = 0.7;
+  const ringWidth = (0.055 + (0.14 - 0.055) * p) * (0.68 + 0.32 * d);
+  const ring = Math.exp(-(((radius - ringRadius) / ringWidth) ** 2) * 1.7);
+  const glow = Math.exp(-(((radius - ringRadius) / (ringWidth * 2.15)) ** 2) * 1.35);
+  const overspray = (1 - smoothstep(0.78, 1, radius)) * Math.exp(-Math.max(0, radius - 0.76) * 5);
+  const ringBase = 0.06 + 0.78 * p;
+  const glowBase = 0.025 + 0.19 * p;
+  const center = Math.exp(-((radius / 0.24) ** 2) * 2) * centerStrength * (ringBase + glowBase) * Math.pow(d, 0.8);
+  const innerFill = p * p * 0.2 * d * (1 - smoothstep(0.16, 0.68, radius));
+  return Math.max(0, Math.min(1, ringBase * Math.pow(d, 1.45) * ring + glowBase * d * glow + 0.16 * p * d * overspray + center + innerFill));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
 export const SPIDER_WEAVE_FREQUENCY = DEFAULT_SPIDER_WEAVE_RATE;
 
 /** Generates deterministic spray deposits and Spider's resampled filament path. */
@@ -22,6 +76,11 @@ export class SprayEngine {
   private spiderCenter: Point | null = null;
   private spiderProgress: [number, number] = [0, 0];
   private spiderProgressTime = 0;
+  private hollowInputs: Array<{ time: number; point: Point }> = [];
+  private hollowSimulationTime = 0;
+  private hollowNextTick = 0;
+  private hollowCenter: Point | null = null;
+  private hollowSpeed = 0;
 
   constructor(
     private readonly onChange: (stroke: SprayStroke, newParticles: Float32Array) => void,
@@ -29,7 +88,10 @@ export class SprayEngine {
   ) {}
 
   begin(point: Point, time: number, size: number, color: string, smoothing: number, pressure: number, material: Material = 'paint', nozzle: SprayNozzle = 'standard', rotation = 0, weaveFrequency = this.defaultSpiderWeaveFrequency): void {
-    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveRate(weaveFrequency) };
+    // The old Standard identifier is retained for serialized stroke compatibility.
+    if (nozzle === 'standard') nozzle = 'hollow-cone';
+    const hollowSeed = nozzle === 'hollow-cone' ? seedHollowStroke(point, size, pressure) : 0;
+    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveRate(weaveFrequency), ...(nozzle === 'hollow-cone' ? { hollowSeed } : {}) };
     this.depositCount = 0;
     this.spiderPreviousFilaments = [null, null];
     this.spiderInputs = [{ time, point: { ...point } }];
@@ -39,6 +101,11 @@ export class SprayEngine {
     const initialHalfTraverse = Math.max(4, size * 0.22);
     this.spiderProgress = [0, initialHalfTraverse];
     this.spiderProgressTime = time;
+    this.hollowInputs = [{ time, point: { ...point } }];
+    this.hollowSimulationTime = time;
+    this.hollowNextTick = time + HOLLOW_CONE_TICK_MS;
+    this.hollowCenter = { ...point };
+    this.hollowSpeed = 0;
     this.buffer = new Float32Array(0);
     this.filter = new PointerFilter(smoothing);
     // Calligraphy's narrow axis is only 18% of its diameter and its dabs fade
@@ -50,7 +117,7 @@ export class SprayEngine {
     this.lastRaw = { ...point };
     const filtered = this.filter.push(point, time);
     if (nozzle === 'spider') this.processSpiderPosition(filtered, time);
-    else this.emit(this.interpolator.push(filtered));
+    else if (nozzle !== 'hollow-cone') this.emit(this.interpolator.push(filtered));
   }
 
   move(point: Point, time: number): void {
@@ -62,14 +129,21 @@ export class SprayEngine {
       if (lastInput && time === lastInput.time) lastInput.point = { ...filtered };
       else this.spiderInputs.push({ time, point: { ...filtered } });
       this.emitSpiderAt(time);
+    } else if (this.active.nozzle === 'hollow-cone') {
+      const lastInput = this.hollowInputs.at(-1);
+      if (lastInput && time < lastInput.time) return;
+      if (lastInput && time === lastInput.time) lastInput.point = { ...filtered };
+      else this.hollowInputs.push({ time, point: { ...filtered } });
+      this.emitHollowAt(Math.max(time, this.hollowSimulationTime));
     } else this.emit(this.interpolator.push(filtered));
     this.lastRaw = { ...point };
   }
 
   /** Advance Spider on a fixed time grid, including while the pointer is still. */
   tick(time: number): void {
-    if (!this.active || this.active.nozzle !== 'spider') return;
-    this.emitSpiderAt(time);
+    if (!this.active) return;
+    if (this.active.nozzle === 'spider') this.emitSpiderAt(time);
+    else if (this.active.nozzle === 'hollow-cone') this.emitHollowAt(time);
   }
 
   end(time?: number): SprayStroke | null {
@@ -78,7 +152,7 @@ export class SprayEngine {
       const endTime = Math.max(this.spiderSimulationTime, time ?? this.spiderInputs.at(-1)?.time ?? this.spiderSimulationTime);
       this.emitSpiderAt(endTime);
       if (endTime > this.spiderSimulationTime) this.processSpiderPosition(this.positionAt(endTime), endTime);
-    }
+    } else if (this.active.nozzle === 'hollow-cone') this.emitHollowAt(Math.max(this.hollowSimulationTime, time ?? this.hollowInputs.at(-1)?.time ?? this.hollowSimulationTime));
     else {
       const endpoint = this.lastRaw ?? this.active.points.at(-1)!;
       const exactEndpoint = this.filter.flush(endpoint);
@@ -92,10 +166,73 @@ export class SprayEngine {
     this.lastRaw = null;
     this.spiderCenter = null;
     this.spiderInputs = [];
+    this.hollowInputs = [];
+    this.hollowCenter = null;
     this.buffer = new Float32Array(0);
     this.depositCount = 0;
     this.onChange(completed, new Float32Array(0));
     return completed;
+  }
+
+  cancel(): void {
+    this.active = null;
+    this.filter = null;
+    this.interpolator = null;
+    this.lastRaw = null;
+    this.spiderCenter = null;
+    this.spiderInputs = [];
+    this.hollowCenter = null;
+    this.hollowInputs = [];
+    this.buffer = new Float32Array(0);
+    this.depositCount = 0;
+  }
+
+  private emitHollowAt(time: number): void {
+    if (!this.active || this.active.nozzle !== 'hollow-cone' || !Number.isFinite(time) || time < this.hollowSimulationTime || !this.hollowCenter) return;
+    const batchStart = this.depositCount * PARTICLE_STRIDE;
+    while (this.hollowNextTick <= time && this.depositCount < MAX_HOLLOW_DEPOSITS_PER_STROKE) {
+      this.depositHollowSample(this.hollowNextTick);
+    }
+    const batchEnd = this.depositCount * PARTICLE_STRIDE;
+    this.active.particles = this.buffer.subarray(0, batchEnd);
+    if (batchEnd > batchStart) this.onChange(this.active, this.buffer.subarray(batchStart, batchEnd));
+    let keep = -1;
+    for (let index = 0; index < this.hollowInputs.length; index++) if (this.hollowInputs[index].time <= this.hollowSimulationTime) keep = index;
+    if (keep > 0) this.hollowInputs.splice(0, keep);
+  }
+
+  private depositHollowSample(time: number): void {
+    if (!this.active || !this.hollowCenter) return;
+    const next = this.positionAtInputs(this.hollowInputs, time, this.hollowCenter);
+    const elapsed = Math.max(1, time - this.hollowSimulationTime);
+    const speed = Math.hypot(next.x - this.hollowCenter.x, next.y - this.hollowCenter.y) / elapsed * 1000;
+    this.hollowSpeed += (speed - this.hollowSpeed) * (1 - Math.exp(-elapsed / 72));
+    const distance = Math.hypot(next.x - this.hollowCenter.x, next.y - this.hollowCenter.y);
+    const steps = Math.max(1, Math.ceil(distance / HOLLOW_SPATIAL_STEP));
+    const deposition = hollowConeExposure(this.active.pressure, this.active.size, this.hollowSpeed) / steps;
+    for (let step = 1; step <= steps && this.depositCount < MAX_HOLLOW_DEPOSITS_PER_STROKE; step++) {
+      const t = step / steps;
+      const point = { x: this.hollowCenter.x + (next.x - this.hollowCenter.x) * t, y: this.hollowCenter.y + (next.y - this.hollowCenter.y) * t };
+      const sampleOrdinal = this.active.timeline.length + 1;
+      const phase = sampleOrdinal * 0.37;
+      this.active.points.push(point);
+      this.active.timeline.push({ time, point, filament: 0, weaveFrequency: this.active.weaveFrequency, speed: this.hollowSpeed, deposition, phase });
+      this.pushParticle(point.x, point.y, this.active.size + phase, deposition);
+    }
+    this.hollowCenter = next;
+    this.hollowSimulationTime = time;
+    this.hollowNextTick = time + HOLLOW_CONE_TICK_MS;
+  }
+
+  private positionAtInputs(inputs: Array<{ time: number; point: Point }>, time: number, fallback: Point): Point {
+    if (!inputs.length) return { ...fallback };
+    let low = 0;
+    while (low + 1 < inputs.length && inputs[low + 1].time <= time) low++;
+    const before = inputs[low];
+    const after = inputs[low + 1];
+    if (!after || after.time <= before.time || time <= before.time) return { ...before.point };
+    const t = Math.max(0, Math.min(1, (time - before.time) / (after.time - before.time)));
+    return { x: before.point.x + (after.point.x - before.point.x) * t, y: before.point.y + (after.point.y - before.point.y) * t };
   }
 
   private emit(points: Point[]): void {
@@ -219,7 +356,7 @@ export class SprayEngine {
     this.buffer[offset] = x;
     this.buffer[offset + 1] = y;
     this.buffer[offset + 2] = size;
-    this.buffer[offset + 3] = Math.max(0, Math.min(1, opacity));
+    this.buffer[offset + 3] = Math.max(0, Math.min(this.active?.nozzle === 'hollow-cone' ? 2 : 1, opacity));
   }
 
   private ensureCapacity(required: number): void {
@@ -230,4 +367,9 @@ export class SprayEngine {
     this.buffer = grown;
   }
 
+}
+
+function seedHollowStroke(point: Point, size: number, pressure: number): number {
+  const value = Math.sin(point.x * 12.9898 + point.y * 78.233 + size * 37.719 + pressure * 19.19) * 43758.5453;
+  return (value - Math.floor(value)) * Math.PI * 2;
 }

@@ -59,8 +59,11 @@
 .app-shell{touch-action:manipulation}
 .brush-cursor-tip[data-tool="spray"]{border-radius:50%}
 .spray-nozzle-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
-.spray-nozzle-option{height:30px;border:1px solid #303334;background:#151718;color:#858a89;font:9px var(--mono);cursor:pointer}
+.spray-nozzle-option{min-width:0;height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1px solid #303334;background:#151718;color:#858a89;padding:4px 2px;font:9px var(--mono);cursor:pointer}
+.spray-nozzle-option:hover{color:#d2d4d1;border-color:#55595a}
 .spray-nozzle-option.active{border-color:#aeb2af;background:#202223;color:#f1f1ee}
+.spray-nozzle-option:focus-visible{outline:1px solid #f1f1ee;outline-offset:2px}
+.spray-nozzle-icon{display:block;width:23px;height:23px;flex:none;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 .surface-thumb-custom{background:linear-gradient(135deg,#4b4c46 25%,#6b6254 25% 50%,#4b4c46 50% 75%,#6b6254 75%);background-size:10px 10px}
 .surface-thumb-norrtag,.surface-thumb-deliverytruck,.surface-thumb-steeldoors{object-fit:contain;background-color:#151718}
 .surface-thumb-citypark{object-fit:cover;object-position:center;background-color:#151718}

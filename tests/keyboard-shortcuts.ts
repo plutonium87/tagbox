@@ -57,7 +57,9 @@ try {
   assert(doc.querySelector<HTMLInputElement>('#spray-pressure')!.value === '55', 'Unused Spray should keep its default pressure.');
   assert(doc.querySelector<HTMLInputElement>('#spray-smoothing')!.value === '45', 'Unused Spray should keep its default smoothing.');
   assert(doc.querySelector<HTMLInputElement>('#spider-weave-rate')!.value === '50', 'Unused Spider should keep the default 50× rate.');
-  assert(doc.querySelector<HTMLButtonElement>('.spray-nozzle-option[data-nozzle="standard"]')!.getAttribute('aria-pressed') === 'true', 'Unused Spray should keep the default nozzle.');
+  assert(doc.querySelector<HTMLButtonElement>('.spray-nozzle-option[data-nozzle="hollow-cone"]')!.getAttribute('aria-pressed') === 'true', 'Unused Spray should default to Standard (Hollow Cone).');
+  assert(doc.querySelectorAll('.spray-nozzle-option').length === 3, 'Spray should expose only Hollow Cone, Calligraphy and Spider options.');
+  assert(doc.querySelector<HTMLButtonElement>('.spray-nozzle-option[data-nozzle="standard"]') === null, 'The legacy Standard option must not remain in the UI.');
   press(doc, 'b');
   assert(pressed(doc, 'spray'), 'B should select Spray.');
   assert(doc.querySelector<HTMLInputElement>('#spray-size')!.value === '96', 'B should expose Spray defaults without modifying them.');

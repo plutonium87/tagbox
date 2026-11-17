@@ -2,14 +2,14 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.2.0**.
+Project version: **1.3.0**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
 ## Features
 
 - Marker with Round, Square, Chisel and Split Chisel tips. Non-round tips can be rotated with the graphical dial by dragging it or using its keyboard controls.
-- Spray with Standard, Calligraphy and Spider nozzles. Calligraphy and Spider share the graphical 0°–360° nozzle rotation dial; Spider lays down two continuous, independently weaving filaments in a rectangular footprint, including while stationary.
+- Spray with Standard (Hollow Cone), Calligraphy and Spider nozzles. Standard is the default circular hollow-cone distribution, with central deposition, a concentrated outer ring, inner falloff and diffuse overspray. Calligraphy produces an elongated oval footprint. Spider lays down two continuous, independently weaving filaments in a rectangular footprint, including while stationary. The illustrated nozzle buttons show each pattern.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
 - Selectable surfaces include Solid, Steel Doors, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
@@ -35,14 +35,15 @@ Project version: **1.2.0**.
 ### Spray
 
 - Spray Size: 3–240 px (default 96 px).
-- Standard, Calligraphy and Spider nozzles. Calligraphy uses a narrow oval spray. Spider lays two continuous, independently weaving filaments in a rectangular footprint. Both support 0°–360° rotation using the graphical dial.
+- Standard (Hollow Cone) is the default nozzle and replaces the former Standard implementation. It combines an adjustable center spot, weaker inner region, concentrated outer ring and soft overspray. Pressure affects ring character and paint accumulation; slower movement deposits more paint per distance, faster movement leaves thinner streaks, and stationary spraying keeps building coverage. Spray Size scales the circular footprint. The nozzle selector uses small visual icons for Hollow Cone, Calligraphy and Spider.
+- Calligraphy uses a narrow oval spray. Spider lays two continuous, independently weaving filaments in a rectangular footprint. Both support 0°–360° rotation using the graphical dial.
 - Spider Weave Rate: 10×–100× (default 50×), saved in this browser and applied to new strokes.
 - Smoothing: 0%–100% (default 45%); Pressure: 0%–100% (default 55%).
 - Paint and all three Chrome materials are available.
 
 ### Colors and materials
 
-Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, Spider Weave Rate, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. The active tool, sizes, tip/nozzle selections, rotations and other live adjustment controls return to their defaults on reload.
+Select a custom color, one of the 16 preset colors or a saved color. Selecting a paint color activates Paint for the current tool. Selecting Silver, Copper or Gold Chrome activates that Chrome material. Saved colors, brush color, Marker and Spray materials, Spray nozzle, Spider Weave Rate, solid background color, active surface, Paint Splatter state, and audio preferences persist in this browser. Previously saved `standard` nozzle selections migrate to Standard (Hollow Cone). The active tool, sizes, rotations and other live adjustment controls return to their defaults on reload.
 
 ### Audio
 
