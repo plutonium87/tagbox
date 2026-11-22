@@ -3,6 +3,17 @@ export type BrushShape = 'round' | 'square' | 'chisel' | 'split-chisel';
 export type Material = 'paint' | 'silver-chrome' | 'copper-chrome' | 'gold-chrome';
 export type SprayNozzle = 'standard' | 'hollow-cone' | 'calligraphy' | 'spider';
 export type ActiveSprayNozzle = Exclude<SprayNozzle, 'standard'>;
+export const sprayNozzleCapabilities: Record<ActiveSprayNozzle, { materials: readonly Material[] }> = {
+  'hollow-cone': { materials: ['paint', 'silver-chrome', 'copper-chrome', 'gold-chrome'] },
+  calligraphy: { materials: ['paint', 'silver-chrome', 'copper-chrome', 'gold-chrome'] },
+  spider: { materials: ['paint'] },
+};
+export function spraySupportsMaterial(nozzle: SprayNozzle, material: Material): boolean {
+  return sprayNozzleCapabilities[nozzle === 'standard' ? 'hollow-cone' : nozzle].materials.includes(material);
+}
+export function compatibleSprayMaterial(nozzle: SprayNozzle, material: Material): Material {
+  return spraySupportsMaterial(nozzle, material) ? material : 'paint';
+}
 export function restoreSprayNozzle(value: string | null): ActiveSprayNozzle {
   if (value === 'calligraphy' || value === 'spider') return value;
   // `standard` was the former default. Keep old saved preferences and strokes readable.

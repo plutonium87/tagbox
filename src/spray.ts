@@ -14,6 +14,18 @@ const HOLLOW_SPEED_FILTER_MS = 72;
 const HOLLOW_DOSE_FILTER_MS = 96;
 const HOLLOW_STILL_DISTANCE = 0.08;
 export const HOLLOW_CONE_CENTER_STRENGTH = 1;
+export const HOLLOW_NOZZLE_GEOMETRY = {
+  'hollow-cone': { aspect: 1 },
+  calligraphy: { aspect: 0.18 },
+} as const;
+
+export function hollowNozzleAspect(nozzle: SprayNozzle): number {
+  return nozzle === 'calligraphy' ? HOLLOW_NOZZLE_GEOMETRY.calligraphy.aspect : 1;
+}
+
+export function hollowNozzleRotation(nozzle: SprayNozzle, rotationDegrees: number): number {
+  return nozzle === 'calligraphy' ? rotationDegrees * Math.PI / 180 : 0;
+}
 
 export function hollowConeExposure(pressure: number, size: number, speed: number): number {
   const p = Math.max(0, Math.min(1, pressure));
@@ -98,8 +110,8 @@ export class SprayEngine {
   begin(point: Point, time: number, size: number, color: string, smoothing: number, pressure: number, material: Material = 'paint', nozzle: SprayNozzle = 'standard', rotation = 0, weaveFrequency = this.defaultSpiderWeaveFrequency): void {
     // The old Standard identifier is retained for serialized stroke compatibility.
     if (nozzle === 'standard') nozzle = 'hollow-cone';
-    const hollowSeed = nozzle === 'hollow-cone' ? seedHollowStroke(point, size, pressure) : 0;
-    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveRate(weaveFrequency), ...(nozzle === 'hollow-cone' ? { hollowSeed } : {}) };
+    const hollowSeed = nozzle === 'hollow-cone' || nozzle === 'calligraphy' ? seedHollowStroke(point, size, pressure) : 0;
+    this.active = { kind: 'spray', points: [], particles: new Float32Array(0), timeline: [], size, color, pressure, material, nozzle, rotation, weaveFrequency: clampSpiderWeaveRate(weaveFrequency), ...(nozzle === 'hollow-cone' || nozzle === 'calligraphy' ? { hollowSeed } : {}) };
     this.depositCount = 0;
     this.spiderPreviousFilaments = [null, null];
     this.spiderInputs = [{ time, point: { ...point } }];
@@ -119,16 +131,12 @@ export class SprayEngine {
     this.hollowStillSince = null;
     this.buffer = new Float32Array(0);
     this.filter = new PointerFilter(smoothing);
-    // Calligraphy's narrow axis is only 18% of its diameter and its dabs fade
-    // at the edge, so keep their centers close enough for consistent overlap.
-    // A subpixel floor avoids a 1 px gap when the nib is at minimum size.
-    // Standard Spray keeps its original spacing.
-    const spacing = nozzle === 'calligraphy' ? Math.max(0.5, size * 0.045) : nozzle === 'spider' ? Math.max(0.5, size * 0.01) : Math.max(2, size * 0.14);
+    const spacing = nozzle === 'spider' ? Math.max(0.5, size * 0.01) : Math.max(2, size * 0.14);
     this.interpolator = new StrokeInterpolator(spacing);
     this.lastRaw = { ...point };
     const filtered = this.filter.push(point, time);
     if (nozzle === 'spider') this.processSpiderPosition(filtered, time);
-    else if (nozzle !== 'hollow-cone') this.emit(this.interpolator.push(filtered));
+    else if (nozzle !== 'hollow-cone' && nozzle !== 'calligraphy') this.emit(this.interpolator.push(filtered));
   }
 
   move(point: Point, time: number): void {
@@ -140,7 +148,7 @@ export class SprayEngine {
       if (lastInput && time === lastInput.time) lastInput.point = { ...filtered };
       else this.spiderInputs.push({ time, point: { ...filtered } });
       this.emitSpiderAt(time);
-    } else if (this.active.nozzle === 'hollow-cone') {
+    } else if (this.active.nozzle === 'hollow-cone' || this.active.nozzle === 'calligraphy') {
       const lastInput = this.hollowInputs.at(-1);
       if (lastInput && time < lastInput.time) return;
       if (lastInput && time === lastInput.time) lastInput.point = { ...filtered };
@@ -154,7 +162,7 @@ export class SprayEngine {
   tick(time: number): void {
     if (!this.active) return;
     if (this.active.nozzle === 'spider') this.emitSpiderAt(time);
-    else if (this.active.nozzle === 'hollow-cone') this.emitHollowAt(time);
+    else if (this.active.nozzle === 'hollow-cone' || this.active.nozzle === 'calligraphy') this.emitHollowAt(time);
   }
 
   end(time?: number): SprayStroke | null {
@@ -163,7 +171,7 @@ export class SprayEngine {
       const endTime = Math.max(this.spiderSimulationTime, time ?? this.spiderInputs.at(-1)?.time ?? this.spiderSimulationTime);
       this.emitSpiderAt(endTime);
       if (endTime > this.spiderSimulationTime) this.processSpiderPosition(this.positionAt(endTime), endTime);
-    } else if (this.active.nozzle === 'hollow-cone') this.emitHollowAt(Math.max(this.hollowSimulationTime, time ?? this.hollowInputs.at(-1)?.time ?? this.hollowSimulationTime));
+    } else if (this.active.nozzle === 'hollow-cone' || this.active.nozzle === 'calligraphy') this.emitHollowAt(Math.max(this.hollowSimulationTime, time ?? this.hollowInputs.at(-1)?.time ?? this.hollowSimulationTime));
     else {
       const endpoint = this.lastRaw ?? this.active.points.at(-1)!;
       const exactEndpoint = this.filter.flush(endpoint);
@@ -205,7 +213,7 @@ export class SprayEngine {
   }
 
   private emitHollowAt(time: number): void {
-    if (!this.active || this.active.nozzle !== 'hollow-cone' || !Number.isFinite(time) || time < this.hollowSimulationTime || !this.hollowCenter) return;
+    if (!this.active || (this.active.nozzle !== 'hollow-cone' && this.active.nozzle !== 'calligraphy') || !Number.isFinite(time) || time < this.hollowSimulationTime || !this.hollowCenter) return;
     const batchStart = this.depositCount * PARTICLE_STRIDE;
     while (this.hollowNextTick <= time && this.depositCount < MAX_HOLLOW_DEPOSITS_PER_STROKE) {
       this.depositHollowSample(this.hollowNextTick);
@@ -222,7 +230,9 @@ export class SprayEngine {
     if (!this.active || !this.hollowCenter) return;
     const next = this.positionAtInputs(this.hollowInputs, time, this.hollowCenter);
     const elapsed = Math.max(1, time - this.hollowSimulationTime);
-    const distance = Math.hypot(next.x - this.hollowCenter.x, next.y - this.hollowCenter.y);
+    const dx = next.x - this.hollowCenter.x;
+    const dy = next.y - this.hollowCenter.y;
+    const distance = Math.hypot(dx, dy);
     const rawSpeed = distance / elapsed * 1000;
     this.hollowSpeed += (rawSpeed - this.hollowSpeed) * (1 - Math.exp(-elapsed / HOLLOW_SPEED_FILTER_MS));
     if (distance > HOLLOW_STILL_DISTANCE) {
@@ -390,7 +400,7 @@ export class SprayEngine {
     this.buffer[offset] = x;
     this.buffer[offset + 1] = y;
     this.buffer[offset + 2] = size;
-    this.buffer[offset + 3] = Math.max(0, Math.min(this.active?.nozzle === 'hollow-cone' ? 2 : 1, opacity));
+    this.buffer[offset + 3] = Math.max(0, Math.min(this.active?.nozzle === 'hollow-cone' || this.active?.nozzle === 'calligraphy' ? 2 : 1, opacity));
   }
 
   private ensureCapacity(required: number): void {

@@ -4,14 +4,26 @@ import { BrushEngine } from './brush';
 import { timestampedExportFilename } from './export-filename';
 import { SprayEngine } from './spray';
 import { CanvasNavigation } from './navigation';
+import { drawNavigatorPreview } from './navigator-preview';
 import { pointerPosition, CanvasRenderer } from './renderer';
-import { drawForeground, drawSurface, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface } from './surfaces';
-import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveRate, restoreSpiderWeaveRate, restoreSprayNozzle, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
+import { applySurfaceLayerOrder, drawForeground, drawSurface, drawSurfaceBase, drawSurfaceComposite, ensureSurfaceLoaded, getCustomSurfaces, getSurfaceAmbience, getSurfaceDimensions, getSurfaceEnvironmentParallax, getSurfaceNavigationBounds, getSurfaceObstacles, getSurfacePaintMask, getSurfaceAoMap, shouldPaintOverForeground, surfaceManifestPromise, type CanvasSurface, type SurfaceCompositeLayer } from './surfaces';
+import { CANVAS_HEIGHT as DEFAULT_CANVAS_HEIGHT, CANVAS_WIDTH as DEFAULT_CANVAS_WIDTH, clampBrushSize, clampSpraySize, clampSpiderWeaveRate, compatibleSprayMaterial, restoreSpiderWeaveRate, restoreSprayNozzle, eraserSettings, settings, spraySettings, type Material, type PaintOperation, type Point } from './settings';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#paint-canvas')!;
 const runoffCanvas = document.querySelector<HTMLCanvasElement>('#runoff-canvas')!;
 const backgroundCanvas = document.querySelector<HTMLCanvasElement>('#background-canvas')!;
+const baseCanvas = document.querySelector<HTMLCanvasElement>('#base-canvas')!;
 const foregroundCanvas = document.querySelector<HTMLCanvasElement>('#foreground-canvas')!;
+const surfaceCompositeCanvases: Record<SurfaceCompositeLayer, HTMLCanvasElement> = {
+  background: backgroundCanvas,
+  base: baseCanvas,
+  foreground: foregroundCanvas,
+  paint: canvas,
+  runoff: runoffCanvas,
+};
+function drawSurfaceComposition(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  drawSurfaceComposite(ctx, activeSurface, surfaceCompositeCanvases, width, height);
+}
 let renderer: CanvasRenderer;
 try {
   renderer = new CanvasRenderer(canvas, runoffCanvas);
@@ -145,7 +157,6 @@ let mousePanStart: Point = { x: 0, y: 0 };
 let mousePanOffset: Point = { x: 0, y: 0 };
 let navigatorDragPointerId: number | null = null;
 let navigatorDragOffset: Point = { x: 0, y: 0 };
-let navigatorRenderFrame = 0;
 let activeSurface: CanvasSurface = 'solid';
 let surfaceRequest = 0;
 let pendingSurface: CanvasSurface | null = null;
@@ -187,7 +198,7 @@ function updateBrushCursor(event: PointerEvent): void {
     brushCursorTip.dataset.tool = 'spray';
     delete brushCursorTip.dataset.shape;
     brushCursorTip.dataset.nozzle = spraySettings.nozzle;
-    brushCursorTip.dataset.material = spraySettings.material;
+    brushCursorTip.dataset.material = compatibleSprayMaterial(spraySettings.nozzle, spraySettings.material);
     brushCursorTip.style.width = `${size}px`;
     brushCursorTip.style.height = `${spraySettings.nozzle === 'spider' ? Math.max(2, size * 0.018) : size * (spraySettings.nozzle === 'calligraphy' ? 0.18 : 1)}px`;
     brushCursorTip.style.transform = `translate(-50%, -50%) rotate(${spraySettings.nozzle === 'calligraphy' || spraySettings.nozzle === 'spider' ? spraySettings.rotationDegrees : 0}deg)`;
@@ -386,30 +397,21 @@ function updateNavigatorViewport(): void {
   navigatorViewport.style.height = `${rect.height / CANVAS_HEIGHT * 100}%`;
 }
 
-function drawNavigator(): void {
-  navigatorRenderFrame = 0;
+function drawNavigatorSurface(): void {
   const width = navigatorCanvas.width;
   const height = navigatorCanvas.height;
-  navigatorContext.clearRect(0, 0, width, height);
-  navigatorContext.fillStyle = '#17191a';
-  navigatorContext.fillRect(0, 0, width, height);
-  const layers = shouldPaintOverForeground(activeSurface)
-    ? [backgroundCanvas, foregroundCanvas, canvas, runoffCanvas]
-    : [backgroundCanvas, canvas, runoffCanvas, foregroundCanvas];
-  for (const layer of layers) {
-    navigatorContext.drawImage(layer, 0, 0, width, height);
-  }
-}
-
-function requestNavigatorRender(): void {
-  if (!navigatorRenderFrame) navigatorRenderFrame = requestAnimationFrame(drawNavigator);
+  drawNavigatorPreview(navigatorContext, {
+    background: backgroundCanvas,
+    base: baseCanvas,
+    foreground: foregroundCanvas,
+  }, width, height);
 }
 
 function applyNavigation(): void {
   const width = CANVAS_WIDTH * navigation.scale;
   const height = CANVAS_HEIGHT * navigation.scale;
   renderer.setDisplaySize(width, height);
-  for (const layer of [backgroundCanvas, foregroundCanvas]) {
+  for (const layer of [backgroundCanvas, baseCanvas, foregroundCanvas]) {
     layer.style.width = `${width}px`;
     layer.style.height = `${height}px`;
   }
@@ -422,7 +424,6 @@ function applyNavigation(): void {
   stage.style.setProperty('--background-pan-x', `${navigation.pan.x * environmentPanFactor}px`);
   stage.style.setProperty('--background-pan-y', `${navigation.pan.y * environmentPanFactor}px`);
   updateNavigatorViewport();
-  requestNavigatorRender();
   if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
 }
 
@@ -440,7 +441,7 @@ function resizeCanvas(): void {
   renderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT, dpr, displayWidth, displayHeight);
   linePreviewCanvas.width = CANVAS_WIDTH; linePreviewCanvas.height = CANVAS_HEIGHT;
   linePreviewCanvas.style.width = `${displayWidth}px`; linePreviewCanvas.style.height = `${displayHeight}px`;
-  for (const layer of [backgroundCanvas, foregroundCanvas]) {
+  for (const layer of [backgroundCanvas, baseCanvas, foregroundCanvas]) {
     layer.width = Math.max(1, Math.round(CANVAS_WIDTH * dpr));
     layer.height = Math.max(1, Math.round(CANVAS_HEIGHT * dpr));
     layer.style.width = `${displayWidth}px`; layer.style.height = `${displayHeight}px`;
@@ -448,10 +449,14 @@ function resizeCanvas(): void {
   const bg = backgroundCanvas.getContext('2d')!;
   bg.setTransform(backgroundCanvas.width / CANVAS_WIDTH, 0, 0, backgroundCanvas.height / CANVAS_HEIGHT, 0, 0);
   drawSurface(bg, activeSurface, solidBackgroundColor);
+  const base = baseCanvas.getContext('2d')!;
+  base.setTransform(baseCanvas.width / CANVAS_WIDTH, 0, 0, baseCanvas.height / CANVAS_HEIGHT, 0, 0);
+  drawSurfaceBase(base, activeSurface);
   const fg = foregroundCanvas.getContext('2d')!;
   fg.setTransform(foregroundCanvas.width / CANVAS_WIDTH, 0, 0, foregroundCanvas.height / CANVAS_HEIGHT, 0, 0);
   drawForeground(fg, activeSurface);
   updateNavigatorSize();
+  drawNavigatorSurface();
   applyNavigation();
 }
 new ResizeObserver(resizeCanvas).observe(canvas.parentElement!);
@@ -472,9 +477,9 @@ function startStroke(event: PointerEvent, initialEvent = event): void {
   else if (strokeTool === 'erase') brush.begin(point, initialEvent.timeStamp, eraserSettings.size, '#ffffff', settings.smoothing, 0, 'round', 'paint', 0, false, 240);
   else {
     spraySettings.size = clampSpraySize(spraySettings.size);
-    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
+    spray.begin(point, initialEvent.timeStamp, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, compatibleSprayMaterial(spraySettings.nozzle, spraySettings.material), spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
     if (spraySettings.nozzle === 'spider') spiderTimer = window.setInterval(() => spray.tick(performance.now()), 16);
-    if (spraySettings.nozzle === 'hollow-cone') hollowConeTimer = window.setInterval(() => spray.tick(performance.now()), 16);
+    if (spraySettings.nozzle === 'hollow-cone' || spraySettings.nozzle === 'calligraphy') hollowConeTimer = window.setInterval(() => spray.tick(performance.now()), 16);
     audio.startSpray();
   }
   holdTimer = window.setInterval(() => { if (isDrawing && (strokeTool === 'marker' || strokeTool === 'erase')) brush.hold(); }, 60);
@@ -521,12 +526,12 @@ function commitStraightLine(point: Point, time: number): void {
     const stroke = brush.end();
     if (stroke) { const operation: PaintOperation = { kind: 'erase', stroke }; operations.push(operation); renderer.commitOperation(operation); }
   } else {
-    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, spraySettings.material, spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
+    spray.begin(start, started, spraySettings.size, settings.color, spraySettings.smoothing, spraySettings.pressure, compatibleSprayMaterial(spraySettings.nozzle, spraySettings.material), spraySettings.nozzle, spraySettings.rotationDegrees, spraySettings.weaveRate);
     audio.startSpray(); spray.move(point, started + 500);
     const stroke = spray.end(started + 500); audio.endSpray();
     if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); }
   }
-  strokeTool = null; undoButton.disabled = operations.length === 0; requestNavigatorRender();
+  strokeTool = null; undoButton.disabled = operations.length === 0;
 }
 function cancelStroke(): void {
   if (!isDrawing) return;
@@ -542,12 +547,11 @@ function cancelStroke(): void {
   window.clearInterval(hollowConeTimer); hollowConeTimer = 0;
   strokeTool = null;
   renderer.setOperations(operations);
-  requestNavigatorRender();
 }
 function clearCanvas(): void {
   cancelStraightLine();
   if (isDrawing) finishStroke();
-  operations.length = 0; renderer.clear(); undoButton.disabled = true; requestNavigatorRender();
+  operations.length = 0; renderer.clear(); undoButton.disabled = true;
 }
 canvas.addEventListener('pointerdown', (event) => {
   canShakeDetector.reset();
@@ -653,7 +657,6 @@ canvas.addEventListener('pointermove', (event) => {
     if (touchCandidates.size === 1) {
       touchCandidates.clear();
       startStroke(event, candidate);
-      requestNavigatorRender();
     }
   }
   if (!isDrawing || event.pointerId !== activePointerId) return;
@@ -663,7 +666,6 @@ canvas.addEventListener('pointermove', (event) => {
     if (strokeTool === 'marker' || strokeTool === 'erase') brush.move(point, sample.timeStamp);
     else if (strokeTool === 'spray') spray.move(point, sample.timeStamp);
   }
-  requestNavigatorRender();
 });
 canvas.addEventListener('pointerleave', (event) => {
   if (event.pointerType === 'mouse') { mousePointerOverCanvas = false; updatePanCursor(); }
@@ -695,7 +697,6 @@ function finishStroke(event?: PointerEvent): void {
     if (stroke) { const operation: PaintOperation = { kind: 'spray', stroke }; operations.push(operation); renderer.commitOperation(operation); undoButton.disabled = false; }
   }
   strokeTool = null;
-  requestNavigatorRender();
 }
 canvas.addEventListener('pointerup', (event) => {
   if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; updatePanCursor(); return; }
@@ -720,7 +721,6 @@ canvas.addEventListener('pointerup', (event) => {
     return;
   }
   finishStroke(event);
-  if (wasTouch && touchPointerIds.size === 0) requestNavigatorRender();
 });
 canvas.addEventListener('pointercancel', (event) => {
   if (mousePanPointerId === event.pointerId) { mousePanPointerId = null; updatePanCursor(); return; }
@@ -971,6 +971,7 @@ document.querySelectorAll<HTMLButtonElement>('.spray-nozzle-option').forEach((bu
     option.setAttribute('aria-pressed', String(selected));
   });
   if (lastCanvasPointer) updateBrushCursor(lastCanvasPointer);
+  updateSelection();
 }));
 intensityInput.addEventListener('input', () => {
   settings.intensity = Number(intensityInput.value) / 100;
@@ -1024,19 +1025,28 @@ function setColor(color: string, selectPaint = true, playSound = false): void {
   updateSelection();
 }
 function updateSelection(): void {
-  const selectedMaterial = activeTool === 'spray' ? spraySettings.material : settings.material;
+  const selectedMaterial = activeTool === 'spray' ? compatibleSprayMaterial(spraySettings.nozzle, spraySettings.material) : settings.material;
   const selectingColor = selectedMaterial === 'paint';
   presetPalette.querySelectorAll<HTMLButtonElement>('.swatch').forEach((swatch) => swatch.classList.toggle('active', selectingColor && swatch.dataset.color === settings.color));
   savedPalette.querySelectorAll<HTMLButtonElement>('.swatch').forEach((swatch) => swatch.classList.toggle('active', selectingColor && swatch.dataset.color === settings.color));
-  materialPalette.querySelectorAll<HTMLButtonElement>('.material-swatch').forEach((button) => button.classList.toggle('active', !selectingColor && button.dataset.material === selectedMaterial));
+  materialPalette.querySelectorAll<HTMLButtonElement>('.material-swatch').forEach((button) => {
+    const unavailable = activeTool === 'spray' && spraySettings.nozzle === 'spider';
+    button.disabled = unavailable;
+    button.setAttribute('aria-disabled', String(unavailable));
+    button.title = unavailable ? `${button.textContent} is unavailable with Spider; your saved material will return with a compatible nozzle.` : `Select ${button.textContent}`;
+    button.classList.toggle('active', !selectingColor && button.dataset.material === selectedMaterial);
+  });
 }
 function setMaterial(material: Material): void {
   if (activeTool === 'spray') {
+    if (!spraySettings.nozzle || compatibleSprayMaterial(spraySettings.nozzle, material) !== material) return;
+    renderer.prepareMaterial(material);
     const changed = spraySettings.material !== material;
     spraySettings.material = material;
     if (changed && material !== 'paint') audio.playCanColor();
     try { localStorage.setItem(sprayMaterialKey, material); } catch { /* Drawing remains available when storage is disabled. */ }
   } else {
+    renderer.prepareMaterial(material);
     const changed = settings.material !== material;
     settings.material = material;
     if (changed && material !== 'paint') audio.playCanColor();
@@ -1090,6 +1100,7 @@ try {
   const storedMaterial = localStorage.getItem(sprayMaterialKey);
   if (storedMaterial === 'silver-chrome' || storedMaterial === 'copper-chrome' || storedMaterial === 'gold-chrome') spraySettings.material = storedMaterial;
 } catch { /* Use ordinary spray when storage is unavailable. */ }
+renderer.prepareMaterial(compatibleSprayMaterial(spraySettings.nozzle, spraySettings.material));
 try {
   const storedWeaveRate = localStorage.getItem(spiderWeaveRateKey);
   spraySettings.weaveRate = restoreSpiderWeaveRate(storedWeaveRate);
@@ -1114,7 +1125,7 @@ function setBackgroundColor(color: string): void {
   solidBackgroundColor = color;
   const ctx = backgroundCanvas.getContext('2d');
   if (ctx) { ctx.setTransform(backgroundCanvas.width / CANVAS_WIDTH, 0, 0, backgroundCanvas.height / CANVAS_HEIGHT, 0, 0); drawSurface(ctx, activeSurface, solidBackgroundColor); }
-  requestNavigatorRender();
+  drawNavigatorSurface();
   try { localStorage.setItem(backgroundColorKey, color); } catch { /* Keep background changes usable when storage is disabled. */ }
 }
 try {
@@ -1130,8 +1141,8 @@ function renderSurfaceOptions(): void {
     { id: 'solid', name: 'Solid', thumb: 'surface-thumb-solid' },
     ...getCustomSurfaces().map(({ id, name }) => ({
       id, name,
-      thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : id === 'deliverytruck' ? 'surface-thumb-deliverytruck' : id === 'steeldoors' ? 'surface-thumb-steeldoors' : 'surface-thumb-custom',
-      thumbnail: ['norrtag', 'citypark', 'storefront', 'industrial', 'deliverytruck', 'steeldoors'].includes(id) ? `/surfaces/${id}-thumbnail.png` : undefined,
+      thumb: id === 'norrtag' ? 'surface-thumb-norrtag' : id === 'model-h' ? 'surface-thumb-model-h' : id === 'citypark' ? 'surface-thumb-citypark' : id === 'storefront' ? 'surface-thumb-storefront' : id === 'industrial' ? 'surface-thumb-industrial' : id === 'deliverytruck' ? 'surface-thumb-deliverytruck' : id === 'steeldoors' ? 'surface-thumb-steeldoors' : 'surface-thumb-custom',
+      thumbnail: ['norrtag', 'model-h', 'citypark', 'storefront', 'industrial', 'deliverytruck', 'steeldoors'].includes(id) ? `/surfaces/${id}-thumbnail.png` : undefined,
     })),
   ];
   for (const option of options) {
@@ -1169,6 +1180,7 @@ async function updateSurface(requestedSurface: CanvasSurface = activeSurface): P
   canvas.parentElement!.classList.toggle('surface-norrtag', activeSurface === 'norrtag');
   canvas.parentElement!.classList.toggle('surface-citypark', activeSurface === 'citypark');
   canvas.parentElement!.classList.toggle('paint-over-foreground', shouldPaintOverForeground(activeSurface));
+  applySurfaceLayerOrder(activeSurface, surfaceCompositeCanvases);
   navigation.setBounds(getSurfaceNavigationBounds(activeSurface));
   navigation.fitToView(canvasStage.clientWidth, canvasStage.clientHeight);
   audio.setSurfaceAmbience(getSurfaceAmbience(activeSurface));
@@ -1179,9 +1191,13 @@ async function updateSurface(requestedSurface: CanvasSurface = activeSurface): P
   const bg = backgroundCanvas.getContext('2d')!;
   bg.setTransform(backgroundCanvas.width / CANVAS_WIDTH, 0, 0, backgroundCanvas.height / CANVAS_HEIGHT, 0, 0);
   drawSurface(bg, activeSurface, solidBackgroundColor);
+  const base = baseCanvas.getContext('2d')!;
+  base.setTransform(baseCanvas.width / CANVAS_WIDTH, 0, 0, baseCanvas.height / CANVAS_HEIGHT, 0, 0);
+  drawSurfaceBase(base, activeSurface);
   const fg = foregroundCanvas.getContext('2d')!;
   fg.setTransform(foregroundCanvas.width / CANVAS_WIDTH, 0, 0, foregroundCanvas.height / CANVAS_HEIGHT, 0, 0);
   drawForeground(fg, activeSurface);
+  drawNavigatorSurface();
   renderer.setRunoffObstacles(getSurfaceObstacles(activeSurface));
   renderer.setPaintMask(getSurfacePaintMask(activeSurface));
   renderer.setSurfaceAoMap(getSurfaceAoMap(activeSurface), activeSurface);
@@ -1216,14 +1232,7 @@ backgroundInput.addEventListener('input', () => setBackgroundColor(backgroundInp
 document.querySelector<HTMLButtonElement>('#export-button')!.addEventListener('click', () => {
   const output = document.createElement('canvas'); output.width = CANVAS_WIDTH; output.height = CANVAS_HEIGHT;
   const ctx = output.getContext('2d')!;
-  ctx.drawImage(backgroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  if (shouldPaintOverForeground(activeSurface)) {
-    ctx.drawImage(foregroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.drawImage(canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  } else {
-    ctx.drawImage(canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.drawImage(foregroundCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  }
+  drawSurfaceComposition(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
   output.toBlob((blob) => {
     if (!blob) return;
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
@@ -1251,7 +1260,6 @@ document.querySelectorAll<HTMLButtonElement>('.brush-shape-option').forEach((but
 function undo(): void {
   if (!operations.length) return;
   operations.pop(); renderer.setOperations(operations); undoButton.disabled = operations.length === 0;
-  requestNavigatorRender();
 }
 undoButton.addEventListener('click', undo);
 const clearButton = document.querySelector<HTMLButtonElement>('#clear-button')!;

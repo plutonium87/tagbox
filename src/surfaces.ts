@@ -8,12 +8,13 @@ export interface CustomSurfaceDefinition {
   width: number;
   height: number;
   background: string;
+  underlay?: string;
   foreground?: string;
   foregroundAbovePaint?: boolean;
   paintMask?: string;
   aoMap?: string;
   paintMaskMode?: 'grayscale' | 'alpha';
-  paintMaskAlphaSource?: 'foreground';
+  paintMaskAlphaSource?: 'foreground' | 'underlay';
   fit?: 'contain' | 'cover' | 'stretch';
   navigationBounds?: 'paint-mask';
   environmentParallax?: number;
@@ -21,9 +22,10 @@ export interface CustomSurfaceDefinition {
   maps?: Record<string, string>;
 }
 export interface SurfaceDimensions { width: number; height: number }
+export type SurfaceCompositeLayer = 'background' | 'base' | 'foreground' | 'paint' | 'runoff';
 interface LogicalBounds { x: number; y: number; width: number; height: number }
 interface BuiltPaintMask { canvas: HTMLCanvasElement; bounds: LogicalBounds | null }
-interface LoadedCustomSurface { definition: CustomSurfaceDefinition; configUrl: string; loaded: boolean; loading?: Promise<void>; background: HTMLImageElement | null; foreground: HTMLImageElement | null; paintMask: HTMLCanvasElement | null; aoMap: HTMLImageElement | null; paintBounds: LogicalBounds | null; ambience: string | null }
+interface LoadedCustomSurface { definition: CustomSurfaceDefinition; configUrl: string; loaded: boolean; loading?: Promise<void>; background: HTMLImageElement | null; underlay: HTMLImageElement | null; foreground: HTMLImageElement | null; paintMask: HTMLCanvasElement | null; aoMap: HTMLImageElement | null; paintBounds: LogicalBounds | null; ambience: string | null }
 const customSurfaces = new Map<string, LoadedCustomSurface>();
 const surfaceCacheOrder: string[] = [];
 
@@ -54,7 +56,7 @@ async function registerCustomSurface(id: string): Promise<void> {
     const definition = await response.json() as CustomSurfaceDefinition;
     if (definition.id !== id || !definition.name || !Number.isFinite(definition.width) || definition.width < 1 || !Number.isFinite(definition.height) || definition.height < 1 || typeof definition.background !== 'string') return;
     const assetUrl = (path?: string): string | undefined => path ? new URL(path, new URL(configUrl, window.location.href)).href : undefined;
-    customSurfaces.set(id, { definition, configUrl, loaded: false, background: null, foreground: null, paintMask: null, aoMap: null, paintBounds: null, ambience: assetUrl(definition.ambience) ?? null });
+    customSurfaces.set(id, { definition, configUrl, loaded: false, background: null, underlay: null, foreground: null, paintMask: null, aoMap: null, paintBounds: null, ambience: assetUrl(definition.ambience) ?? null });
   } catch {
     // An invalid or unavailable custom entry is skipped; the rest of the app remains usable.
   }
@@ -72,8 +74,9 @@ export async function ensureSurfaceLoaded(id: string): Promise<void> {
     const assetUrl = (path?: string): string | undefined => path ? new URL(path, new URL(custom.configUrl, window.location.href)).href : undefined;
     const backgroundUrl = assetUrl(custom.definition.background)!;
     const maskUrl = assetUrl(custom.definition.paintMask);
-    const [background, foreground, paintMask, aoMap] = await Promise.all([
+    const [background, underlay, foreground, paintMask, aoMap] = await Promise.all([
       loadRequiredImage(backgroundUrl),
+      custom.definition.underlay ? loadRequiredImage(assetUrl(custom.definition.underlay)!) : Promise.resolve(null),
       loadOptionalImage(assetUrl(custom.definition.foreground)),
       maskUrl ? loadRequiredImage(maskUrl) : Promise.resolve(null),
       loadOptionalImage(assetUrl(custom.definition.aoMap)),
@@ -81,9 +84,10 @@ export async function ensureSurfaceLoaded(id: string): Promise<void> {
     const alignedMask = paintMask ? buildLogicalPaintMask(
       paintMask,
       custom.definition,
-      custom.definition.paintMaskAlphaSource === 'foreground' ? foreground : null,
+      custom.definition.paintMaskAlphaSource === 'foreground' ? foreground
+        : custom.definition.paintMaskAlphaSource === 'underlay' ? underlay : null,
     ) : null;
-    custom.background = background; custom.foreground = foreground;
+    custom.background = background; custom.underlay = underlay; custom.foreground = foreground;
     custom.paintMask = alignedMask?.canvas ?? null; custom.paintBounds = alignedMask?.bounds ?? null; custom.loaded = true;
     custom.aoMap = aoMap;
     touchSurfaceCache(id);
@@ -98,7 +102,7 @@ function touchSurfaceCache(id: string): void {
   while (surfaceCacheOrder.length > 2) {
     const evictedId = surfaceCacheOrder.shift()!;
     const evicted = customSurfaces.get(evictedId);
-    if (evicted) { evicted.loaded = false; evicted.background = null; evicted.foreground = null; evicted.paintMask = null; evicted.aoMap = null; evicted.paintBounds = null; }
+    if (evicted) { evicted.loaded = false; evicted.background = null; evicted.underlay = null; evicted.foreground = null; evicted.paintMask = null; evicted.aoMap = null; evicted.paintBounds = null; }
   }
 }
 
@@ -152,7 +156,7 @@ function buildLogicalPaintMask(image: HTMLImageElement, definition: CustomSurfac
     pixels.data[index + 1] = value;
     pixels.data[index + 2] = value;
     pixels.data[index + 3] = 255;
-    if (calculateBounds && (alphaPixels ? alphaPixels.data[index + 3] > 0 : value > 0)) {
+    if (calculateBounds && (alphaPixels ? surfaceOpacity > 0 : value > 0)) {
       const pixel = index / 4;
       const x = pixel % mask.width;
       const y = Math.floor(pixel / mask.width);
@@ -199,6 +203,28 @@ export function shouldPaintOverForeground(surface: CanvasSurface): boolean {
   return Boolean(definition?.foreground && !definition.foregroundAbovePaint);
 }
 
+export function getSurfaceCompositeOrder(surface: CanvasSurface): SurfaceCompositeLayer[] {
+  const definition = customSurfaces.get(surface)?.definition;
+  const baseLayers: SurfaceCompositeLayer[] = definition?.underlay ? ['base'] : [];
+  const surfaceLayers: SurfaceCompositeLayer[] = ['background', ...baseLayers];
+  if (!definition?.foreground) return [...surfaceLayers, 'paint', 'runoff'];
+  return shouldPaintOverForeground(surface)
+    ? [...surfaceLayers, 'foreground', 'paint', 'runoff']
+    : [...surfaceLayers, 'paint', 'runoff', 'foreground'];
+}
+
+export function applySurfaceLayerOrder(surface: CanvasSurface, layers: Record<SurfaceCompositeLayer, HTMLElement>): void {
+  for (const layer of Object.values(layers)) layer.style.zIndex = '-1';
+  for (const [index, layer] of getSurfaceCompositeOrder(surface).entries()) layers[layer].style.zIndex = String(index);
+}
+
+export function drawSurfaceComposite(ctx: CanvasRenderingContext2D, surface: CanvasSurface, layers: Record<SurfaceCompositeLayer, CanvasImageSource>, width: number, height: number, backgroundOffset = { x: 0, y: 0 }): void {
+  for (const layer of getSurfaceCompositeOrder(surface)) {
+    const offset = layer === 'background' ? backgroundOffset : { x: 0, y: 0 };
+    ctx.drawImage(layers[layer], offset.x, offset.y, width, height);
+  }
+}
+
 export function getSurfaceAoMap(surface: CanvasSurface): HTMLImageElement | null {
   return customSurfaces.get(surface)?.aoMap ?? null;
 }
@@ -232,6 +258,13 @@ export function drawSurface(ctx: CanvasRenderingContext2D, surface: CanvasSurfac
     if (custom?.background) drawCustomImage(ctx, custom.background, custom.definition);
     else { ctx.fillStyle = '#343638'; ctx.fillRect(0, 0, width, height); }
   }
+}
+
+export function drawSurfaceBase(ctx: CanvasRenderingContext2D, surface: CanvasSurface): void {
+  const { width, height } = getSurfaceDimensions(surface);
+  ctx.clearRect(0, 0, width, height);
+  const custom = customSurfaces.get(surface);
+  if (custom?.underlay) drawCustomImage(ctx, custom.underlay, custom.definition);
 }
 
 export function drawForeground(ctx: CanvasRenderingContext2D, surface: CanvasSurface): void {

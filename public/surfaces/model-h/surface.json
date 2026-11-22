@@ -1,0 +1,15 @@
+{
+  "id": "model-h",
+  "name": "Model H",
+  "width": 3240,
+  "height": 1080,
+  "background": "../modelh/modelh_freight_background_2172x724.png",
+  "underlay": "../modelh/modelh_freight_3240x1080.png",
+  "paintMask": "../modelh/modelh_freight_paintmask_3240x1080.png",
+  "paintMaskMode": "grayscale",
+  "paintMaskAlphaSource": "underlay",
+  "fit": "stretch",
+  "navigationBounds": "paint-mask",
+  "environmentParallax": 0.075,
+  "ambience": "/audio/ambience/railway.mp3"
+}

@@ -2,7 +2,7 @@
 
 Tagbox is a browser-based graffiti painting application built with TypeScript, Vite and WebGL2.
 
-Project version: **1.3.0**.
+Project version: **1.4.2**.
 
 **Live application:** [tagbox.kebabstugan.com](https://tagbox.kebabstugan.com)
 
@@ -12,9 +12,9 @@ Project version: **1.3.0**.
 - Spray with Standard (Hollow Cone), Calligraphy and Spider nozzles. Standard is the default circular hollow-cone distribution, with central deposition, a concentrated outer ring, inner falloff and diffuse overspray. Calligraphy produces an elongated oval footprint. Spider lays down two continuous, independently weaving filaments in a rectangular footprint, including while stationary. The illustrated nozzle buttons show each pattern.
 - Paint, Silver Chrome, Copper Chrome and Gold Chrome materials. Chrome uses the shared environment reflection renderer.
 - Adjustable Marker smoothing, Paint Load, Run Intensity and Paint Splatter. Spray has independent size, smoothing and pressure controls.
-- Selectable surfaces include Solid, Steel Doors, Norrtåg, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
-- Surface-native logical dimensions: Solid, Steel Doors and Store front use 1920×1080; Norrtåg, City Park, Industrial and Delivery Truck use 3240×1080.
-- Steel Doors uses aligned background, fixed foreground handles and a grayscale paint mask. Norrtåg, City Park and Delivery Truck use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
+- Selectable surfaces include Solid, Steel Doors, Norrtåg, Model H, City Park, Store front, Industrial and Delivery Truck. Custom surfaces can be registered through the surface manifest.
+- Surface-native logical dimensions: Solid, Steel Doors and Store front use 1920×1080; Norrtåg, Model H, City Park, Industrial and Delivery Truck use 3240×1080.
+- Steel Doors uses aligned background, fixed foreground handles and a grayscale paint mask. Model H combines a stretched railway background, freight base artwork and a grayscale mask multiplied by the freight base alpha. Norrtåg, City Park and Delivery Truck use separate backgrounds, foreground artwork and grayscale paint masks; Norrtåg's mask also follows the train foreground alpha. Industrial paint receives subtle AO shading.
 - Custom surface selector thumbnails composite background and foreground artwork and fit the full scene into the selector preview.
 - Navigator thumbnail and viewport tracking, zoom and pan.
 - Independent Marker, Spray and Erase tools, Undo, Shift-click straight lines, clear-canvas, Fullscreen and timestamped native-dimension PNG export.
@@ -77,9 +77,9 @@ Fullscreen expands the canvas workspace while keeping its available actions, inc
 
 ## Surfaces and export
 
-Solid, Steel Doors and Store front use 1920×1080. Norrtåg, City Park, Industrial and Delivery Truck are registered through the surface manifest at 3240×1080. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Backgrounds sit behind paint, custom foreground artwork renders beneath paint, and paint masks restrict Marker, Spray and runoff deposition to paintable areas. Steel Doors uses its configured fixed foreground overlay.
+Solid, Steel Doors and Store front use 1920×1080. Norrtåg, Model H, City Park, Industrial and Delivery Truck are registered through the surface manifest at 3240×1080. Each configured surface declares its own logical width and height; display scaling fits that canvas to the viewport without changing its logical dimensions. Model H renders its static railway background and freight base beneath paint. Its grayscale mask is multiplied by the freight base alpha, and its environment parallax remains active in the main editor. Paint masks restrict Marker, Spray and runoff deposition to paintable areas. Steel Doors uses its configured fixed foreground overlay.
 
-The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's artwork, paint mask, optional AO map and ambience when selected, then keeps a small cache of recently used surfaces. Background, foreground, paint-mask and AO-map paths are resolved relative to that configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground; Delivery Truck uses its authored grayscale mask directly. See [Custom surface assets](public/surfaces/README.md).
+The custom surface loader reads public/surfaces/manifest.json and each registered surface's surface.json. It loads a surface's background, optional underlay, foreground, paint mask, AO map and ambience when selected, then keeps a small cache of recently used surfaces. Asset paths are resolved relative to the surface configuration. Norrtåg's paintability uses grayscale intensity multiplied by the alpha of its train foreground; Model H uses its freight base alpha; Delivery Truck uses its authored grayscale mask directly. See [Custom surface assets](public/surfaces/README.md).
 
 Export PNG downloads the active logical canvas at its configured dimensions. Filenames include a local timestamp.
 

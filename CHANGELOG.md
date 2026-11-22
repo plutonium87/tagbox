@@ -2,6 +2,27 @@
 
 This project follows a Keep a Changelog-inspired format. Version numbers follow semantic versioning.
 
+## [1.4.2] - 2026-11-22
+
+### Fixed
+
+- Fixed Navigator mini views to show each surface's static background and artwork without parallax, paint, or runoff. Solid background color changes now update the preview.
+
+## [1.4.1] - 2026-11-21
+
+### Fixed
+
+- Corrected Model H layer order so the railway background and freight base render beneath paint.
+- Applied Model H's grayscale mask to the freight base alpha.
+
+## [1.4.0] - 2026-11-21
+
+### Added
+
+- Added Model H with a stretched railway background, freight base underlay, and grayscale paint mask multiplied by underlay alpha.
+- Added generic optional surface underlays that can supply paint-mask alpha.
+- Kept Model H's background and base order consistent in the editor, Navigator and PNG export.
+
 ## [1.3.0] - 2026-11-17
 
 ### Added

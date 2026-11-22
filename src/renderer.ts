@@ -1,7 +1,7 @@
 import { RunoffEngine } from './runoff';
 import type { RunoffObstacle } from './runoff';
 import type { Dab, Material, PaintOperation, Point, SprayStroke, Stroke } from './settings';
-import { HOLLOW_CONE_CENTER_STRENGTH } from './spray';
+import { HOLLOW_CONE_CENTER_STRENGTH, hollowNozzleAspect, hollowNozzleRotation } from './spray';
 
 type ChromeMaterial = Exclude<Material, 'paint'>;
 const chromeMaterials: ChromeMaterial[] = ['silver-chrome', 'copper-chrome', 'gold-chrome'];
@@ -126,26 +126,26 @@ precision highp float; precision highp int;
 uniform highp vec3 u_color; uniform highp int u_shape; uniform highp int u_maskOnly; uniform highp int u_hasPaintMask; uniform highp int u_spider; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; in highp float v_angle; in highp float v_brushSizePx; in highp float v_pointSize; in highp vec2 v_world; out highp vec4 outColor;
 ${surfaceMaterialShader}
 void main(){ vec2 p=gl_PointCoord-vec2(0.5); float coverage=1.0; if(u_shape==0 && dot(p,p)>0.25) discard; if(u_shape!=0){ float c=cos(v_angle); float s=sin(v_angle); vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y); if(u_shape==1){ vec2 pixel=q*v_pointSize; float edge=v_brushSizePx*0.5-max(abs(pixel.x),abs(pixel.y)); coverage=clamp(edge+0.5,0.0,1.0); if(coverage<=0.0) discard; } else if(u_shape==2){ if((q.x*q.x)/(0.25)+(q.y*q.y)/(0.0378)>1.0) discard; } else { bool inShortSegment=q.x>=-0.5 && q.x<=-0.2; bool inLongSegment=q.x>=-0.1 && q.x<=0.5; if(abs(q.y)>0.1722222 || !(inShortSegment || inLongSegment)) discard; } } vec2 maskUv=vec2(gl_FragCoord.x/(u_scale.x*u_logicalSize.x),gl_FragCoord.y/(u_scale.y*u_logicalSize.y)); float paintability=u_hasPaintMask==1?texture(u_paintMask,maskUv).r:1.0; coverage*=paintability; if(coverage<=0.001) discard; vec3 color=u_maskOnly==1?vec3(1.0):shadeSurfacePaint(u_color,maskUv); outColor=vec4(color,coverage); }`;
-const sprayVertex = `#version 300 es
+export const SPRAY_VERTEX_SHADER = `#version 300 es
 precision highp float;
 in highp vec4 a_particle; uniform highp vec2 u_targetSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; uniform highp float u_nozzleRotation; uniform highp float u_spiderSegment; uniform highp float u_spiderWidth; uniform highp float u_spiderPressure; uniform highp float u_hollowSize; uniform highp int u_spider; uniform highp int u_hollowCone;
 out highp float v_pressure; out highp float v_phase; out highp vec2 v_uv; out highp vec2 v_world; out highp vec2 v_center;
-void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.5),vec2(0.5,0.5)); vec2 corner=corners[gl_VertexID]; float scale=min(u_scale.x,u_scale.y); float particleSize=u_hollowCone==1?u_hollowSize:a_particle.z; vec2 local=u_spider==1?vec2(corner.x*u_spiderSegment,corner.y*u_spiderWidth*a_particle.w)*scale:vec2(corner.x*particleSize,corner.y*particleSize*u_nozzleAspect)*scale; float rotation=u_nozzleRotation+(u_spider==1?a_particle.z:0.0); float c=cos(rotation); float s=sin(rotation); vec2 rotated=vec2(c*local.x-s*local.y,s*local.x+c*local.y); vec2 pixel=a_particle.xy*u_scale+rotated; vec2 clip=pixel/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_pressure=u_spider==1?u_spiderPressure:a_particle.w; v_phase=u_hollowCone==1?a_particle.z-u_hollowSize:0.0; v_uv=corner+vec2(0.5); v_world=pixel/u_scale; v_center=a_particle.xy; }`;
-const sprayFragment = `#version 300 es
+void main(){ vec2 corners[4]=vec2[4](vec2(-0.5,-0.5),vec2(0.5,-0.5),vec2(-0.5,0.5),vec2(0.5,0.5)); vec2 corner=corners[gl_VertexID]; float scale=min(u_scale.x,u_scale.y); float particleSize=u_hollowCone==1?u_hollowSize:a_particle.z; float pad=u_spider==0 && u_nozzleAspect<1.0?1.0/scale:0.0; vec2 local=u_spider==1?vec2(corner.x*u_spiderSegment,corner.y*u_spiderWidth*a_particle.w)*scale:vec2(corner.x*(particleSize+2.0*pad),corner.y*(particleSize*u_nozzleAspect+2.0*pad))*scale; float rotation=u_nozzleRotation+(u_spider==1?a_particle.z:0.0); float c=cos(rotation); float s=sin(rotation); vec2 rotated=vec2(c*local.x-s*local.y,s*local.x+c*local.y); vec2 pixel=a_particle.xy*u_scale+rotated; vec2 clip=pixel/u_targetSize*2.0-1.0; gl_Position=vec4(clip.x,-clip.y,0.0,1.0); v_pressure=u_spider==1?u_spiderPressure:a_particle.w; v_phase=u_hollowCone==1?a_particle.z-u_hollowSize:0.0; vec2 uvPad=u_spider==0 && u_nozzleAspect<1.0?vec2(pad/particleSize,pad/(particleSize*u_nozzleAspect)):vec2(0.0); v_uv=corner*(vec2(1.0)+2.0*uvPad)+vec2(0.5); v_world=pixel/u_scale; v_center=a_particle.xy; }`;
+export const SPRAY_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 uniform highp vec3 u_color; uniform highp int u_hasPaintMask; uniform highp int u_spider; uniform highp int u_hollowCone; uniform highp float u_hollowPressure; uniform highp float u_hollowCenterDeposition; uniform highp float u_hollowSeed; uniform highp sampler2D u_paintMask; uniform highp vec2 u_logicalSize; uniform highp vec2 u_scale; uniform highp float u_nozzleAspect; in highp float v_pressure; in highp float v_phase; in highp vec2 v_uv; in highp vec2 v_world; in highp vec2 v_center; out highp vec4 outColor;
-// The vertex shader already scales the quad by nozzle aspect; UVs span that full footprint.
 ${surfaceMaterialShader}
-void main(){ vec2 p=v_uv-vec2(0.5); if(u_spider==1){ float edge=min(0.5-abs(p.x),0.5-abs(p.y)); float coverage=smoothstep(0.0,0.08,edge); if(coverage<=0.001) discard; vec2 spiderUv=vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,spiderUv).r:1.0; vec3 spiderColor=shadeSurfacePaint(u_color,spiderUv); outColor=vec4(spiderColor,coverage*clamp(v_pressure,0.0,1.0)*paintability); return; } float r=length(p)*2.0; float deposition=u_hollowCone==1?clamp(v_pressure,0.0,2.0):clamp(v_pressure,0.0,1.0); float pressure=clamp(u_hollowCone==1?u_hollowPressure:v_pressure,0.0,1.0); if(u_hollowCone==1){ if(r>1.0) discard; } else { float angle=atan(p.y,p.x); float phase=v_center.x*0.17+v_center.y*0.13; float boundary=1.0+sin(angle*5.0+phase)*0.025+sin(angle*9.0-phase*0.7)*0.012; if(r>boundary) discard; r/=boundary; float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); } vec2 uv=vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,uv).r:1.0; vec3 color=shadeSurfacePaint(u_color,uv); float alpha; if(u_hollowCone==1){ float angle=atan(p.y,p.x); float ringRadius=0.70+0.012*sin(angle*3.0+v_phase*0.15+u_hollowSeed)+0.006*sin(angle*5.0-v_phase*0.09+u_hollowSeed*2.0); float ringIntensity=(0.93+0.045*sin(angle*4.0+v_phase*0.12+u_hollowSeed)+0.025*sin(angle*7.0-v_phase*0.07+u_hollowSeed*2.0)); float ringWidth=mix(0.055,0.14,pressure)*mix(0.68,1.0,deposition); float ring=exp(-pow((r-ringRadius)/ringWidth,2.0)*1.7); float glow=exp(-pow((r-ringRadius)/(ringWidth*2.15),2.0)*1.35); float overspray=(1.0-smoothstep(0.78,1.0,r))*exp(-max(0.0,r-0.76)*5.0); float ringBase=0.06+0.78*pressure; float glowBase=0.025+0.19*pressure; vec2 centerOffset=0.00635*vec2(sin(v_phase*0.18+u_hollowSeed),cos(v_phase*0.14+u_hollowSeed*1.7)); vec2 centerVector=p-centerOffset; float centerAngle=atan(centerVector.y,centerVector.x); float centerShape=0.24*(1.0+0.035*sin(centerAngle*3.0+u_hollowSeed+v_phase*0.16)); float center=exp(-pow((length(centerVector)*2.0)/centerShape,2.0)*2.0)*u_hollowCenterDeposition*(ringBase+glowBase)*pow(deposition,0.8); float innerFill=pressure*pressure*0.20*deposition*(1.0-smoothstep(0.16,0.68,r)); alpha=ringIntensity*(ringBase*pow(deposition,1.45)*ring+glowBase*deposition*glow)+0.16*pressure*deposition*overspray+center+innerFill; } else { float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); alpha=density*falloff; } outColor=vec4(color,clamp(alpha,0.0,1.0)*paintability); }`;
+float hollowConeProfile(vec2 p){ float r=length(p)*2.0; if(r>1.0) return 0.0; float deposition=clamp(v_pressure,0.0,2.0); float pressure=clamp(u_hollowPressure,0.0,1.0); float angle=atan(p.y,p.x); float ringRadius=0.70+0.012*sin(angle*3.0+v_phase*0.15+u_hollowSeed)+0.006*sin(angle*5.0-v_phase*0.09+u_hollowSeed*2.0); float ringIntensity=0.93+0.045*sin(angle*4.0+v_phase*0.12+u_hollowSeed)+0.025*sin(angle*7.0-v_phase*0.07+u_hollowSeed*2.0); float ringWidth=mix(0.055,0.14,pressure)*mix(0.68,1.0,deposition); float ring=exp(-pow((r-ringRadius)/ringWidth,2.0)*1.7); float glow=exp(-pow((r-ringRadius)/(ringWidth*2.15),2.0)*1.35); float overspray=(1.0-smoothstep(0.78,1.0,r))*exp(-max(0.0,r-0.76)*5.0); float ringBase=0.06+0.78*pressure; float glowBase=0.025+0.19*pressure; vec2 centerOffset=0.00635*vec2(sin(v_phase*0.18+u_hollowSeed),cos(v_phase*0.14+u_hollowSeed*1.7)); vec2 centerVector=p-centerOffset; float centerAngle=atan(centerVector.y,centerVector.x); float centerShape=0.24*(1.0+0.035*sin(centerAngle*3.0+u_hollowSeed+v_phase*0.16)); float center=exp(-pow((length(centerVector)*2.0)/centerShape,2.0)*2.0)*u_hollowCenterDeposition*(ringBase+glowBase)*pow(deposition,0.8); float innerFill=pressure*pressure*0.20*deposition*(1.0-smoothstep(0.16,0.68,r)); float alpha=ringIntensity*(ringBase*pow(deposition,1.45)*ring+glowBase*deposition*glow)+0.16*pressure*deposition*overspray+center+innerFill; return clamp(alpha,0.0,1.0); }
+void main(){ vec2 p=v_uv-vec2(0.5); if(u_spider==1){ float edge=min(0.5-abs(p.x),0.5-abs(p.y)); float coverage=smoothstep(0.0,0.08,edge); if(coverage<=0.001) discard; vec2 spiderUv=vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,spiderUv).r:1.0; vec3 spiderColor=shadeSurfacePaint(u_color,spiderUv); outColor=vec4(spiderColor,coverage*clamp(v_pressure,0.0,1.0)*paintability); return; } float r=length(p)*2.0; if(u_hollowCone==1 && u_nozzleAspect>=1.0 && r>1.0) discard; float pressure=clamp(u_hollowCone==1?u_hollowPressure:v_pressure,0.0,1.0); if(u_hollowCone==0){ float angle=atan(p.y,p.x); float phase=v_center.x*0.17+v_center.y*0.13; float boundary=1.0+sin(angle*5.0+phase)*0.025+sin(angle*9.0-phase*0.7)*0.012; if(r>boundary) discard; r/=boundary; } vec2 uv=vec2(v_world.x/u_logicalSize.x,1.0-v_world.y/u_logicalSize.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,uv).r:1.0; vec3 color=shadeSurfacePaint(u_color,uv); float alpha; if(u_hollowCone==1){ if(u_nozzleAspect<1.0){ vec2 pixelDx=dFdx(p); vec2 pixelDy=dFdy(p); alpha=0.0; for(int y=0;y<4;y++){ float oy=(float(y)+0.5)*0.25-0.5; for(int x=0;x<4;x++){ float ox=(float(x)+0.5)*0.25-0.5; alpha+=hollowConeProfile(p+pixelDx*ox+pixelDy*oy)*0.0625; } } } else { alpha=hollowConeProfile(p); } } else { float density=0.025+0.975*pow(pressure,1.25); float edgeStart=mix(0.2,0.78,pressure); float falloff=1.0-smoothstep(edgeStart,1.0,r); alpha=density*falloff; } outColor=vec4(color,clamp(alpha,0.0,1.0)*paintability); }`;
 const runoffVertex = `#version 300 es
 precision highp float;
 in highp vec2 a_position; in highp vec3 a_color; uniform highp vec2 u_resolution; out highp vec3 v_color; out highp vec2 v_world;
 void main(){ vec2 p=a_position/u_resolution; gl_Position=vec4(p.x*2.0-1.0,1.0-p.y*2.0,0.0,1.0); v_color=a_color; v_world=p; }`;
-const runoffFragment = `#version 300 es
+export const RUNOFF_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 in highp vec3 v_color; in highp vec2 v_world; uniform highp int u_maskOnly; uniform highp int u_hasPaintMask; uniform highp sampler2D u_paintMask; out highp vec4 outColor;
 ${surfaceMaterialShader}
-void main(){ vec2 uv=vec2(v_world.x,1.0-v_world.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,uv).r:1.0; if(paintability<=0.001) discard; vec3 color=u_maskOnly==1?vec3(1.0):shadeSurfacePaint(v_color,uv); outColor=vec4(color,paintability); }`;
+void main(){ vec2 uv=vec2(v_world.x,1.0-v_world.y); float paintability=u_hasPaintMask==1?texture(u_paintMask,uv).r:1.0; if(paintability<=0.001) discard; float runoffOpacity=1.0; float coverage=clamp(runoffOpacity*paintability,0.0,1.0); vec3 color=u_maskOnly==1?vec3(1.0):shadeSurfacePaint(v_color,uv); outColor=vec4(color,coverage); }`;
 
 export class CanvasRenderer {
   private baseGl: WebGL2RenderingContext;
@@ -242,8 +242,8 @@ export class CanvasRenderer {
       this.reflectionReady = false;
       this.scheduleRender(true);
     };
-    this.runoffProgram = this.createProgram(baseGl, runoffVertex, runoffFragment, 'runoff');
-    this.sprayProgram = this.createProgram(baseGl, sprayVertex, sprayFragment, 'spray particles');
+    this.runoffProgram = this.createProgram(baseGl, runoffVertex, RUNOFF_FRAGMENT_SHADER, 'runoff');
+    this.sprayProgram = this.createProgram(baseGl, SPRAY_VERTEX_SHADER, SPRAY_FRAGMENT_SHADER, 'spray particles');
     const baseVao = baseGl.createVertexArray();
     const runoffVao = baseGl.createVertexArray();
     const sprayVao = baseGl.createVertexArray();
@@ -330,6 +330,10 @@ export class CanvasRenderer {
     this.chromeAssetsStarted = true;
     this.environmentImage.src = '/assets/chrome/chrome-environment.png';
     this.reflectionImage.src = '/assets/chrome/reflection_8bit_grayscale.png';
+  }
+
+  prepareMaterial(material: Material): void {
+    if (material !== 'paint') this.ensureChromeAssets();
   }
 
   private createFramebuffer(gl: WebGL2RenderingContext, texture: WebGLTexture): WebGLFramebuffer {
@@ -718,16 +722,16 @@ export class CanvasRenderer {
     gl.uniform2f(gl.getUniformLocation(this.sprayProgram, 'u_scale'), this.canvas.width / this.width, this.canvas.height / this.height);
     gl.uniform3fv(gl.getUniformLocation(this.sprayProgram, 'u_color'), this.parseColor(stroke.color));
     gl.uniform1i(gl.getUniformLocation(this.sprayProgram, 'u_spider'), stroke.nozzle === 'spider' ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(this.sprayProgram, 'u_hollowCone'), stroke.nozzle === 'hollow-cone' || stroke.nozzle === 'standard' ? 1 : 0);
+    gl.uniform1i(gl.getUniformLocation(this.sprayProgram, 'u_hollowCone'), stroke.nozzle === 'hollow-cone' || stroke.nozzle === 'standard' || stroke.nozzle === 'calligraphy' ? 1 : 0);
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_hollowPressure'), stroke.pressure);
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_hollowCenterDeposition'), HOLLOW_CONE_CENTER_STRENGTH);
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_hollowSeed'), stroke.hollowSeed ?? 0);
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_hollowSize'), stroke.size);
-    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleAspect'), stroke.nozzle === 'calligraphy' ? 0.18 : 1.0);
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleAspect'), hollowNozzleAspect(stroke.nozzle));
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_spiderSegment'), Math.max(2, stroke.size * 0.09));
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_spiderWidth'), Math.max(0.8, stroke.size * (0.012 + stroke.pressure * 0.025)));
     gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_spiderPressure'), Math.max(0.05, Math.min(1, stroke.pressure)));
-    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleRotation'), stroke.nozzle === 'calligraphy' || stroke.nozzle === 'spider' ? stroke.rotation * Math.PI / 180 : 0);
+    gl.uniform1f(gl.getUniformLocation(this.sprayProgram, 'u_nozzleRotation'), stroke.nozzle === 'spider' ? stroke.rotation * Math.PI / 180 : hollowNozzleRotation(stroke.nozzle, stroke.rotation));
     this.bindPaintMask(this.sprayProgram);
     this.bindSurfaceMaterialMaps(this.sprayProgram, stroke.material === 'paint');
     const attribute = gl.getAttribLocation(this.sprayProgram, 'a_particle');
@@ -760,10 +764,8 @@ export class CanvasRenderer {
         color = gl.getAttribLocation(this.runoffProgram, 'a_color');
         gl.enableVertexAttribArray(position);
         gl.enableVertexAttribArray(color);
-        if (maskOnly) {
-          gl.enable(gl.BLEND);
-          gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        } else gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         drawingInitialized = true;
       }
       let cached = this.runoffGpuCache.get(component);
@@ -784,7 +786,7 @@ export class CanvasRenderer {
       gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 20, 8);
       gl.drawArrays(gl.TRIANGLES, 0, geometry.length / 5);
     });
-    if (drawingInitialized && maskOnly) gl.disable(gl.BLEND);
+    if (drawingInitialized) gl.disable(gl.BLEND);
   }
 
   private startRunoffAnimation(): void {

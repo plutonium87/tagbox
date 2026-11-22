@@ -1,6 +1,7 @@
 {
   "surfaces": [
     "norrtag",
+    "model-h",
     "citypark",
     "storefront",
     "industrial",
